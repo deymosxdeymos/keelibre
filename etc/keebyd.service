@@ -1,0 +1,14 @@
+[Unit]
+Description=Keeby-style mechanical keyboard sounds
+After=pipewire.service wireplumber.service
+Wants=pipewire.service
+
+[Service]
+ExecStart=%h/.local/bin/keebyd
+Restart=on-failure
+RestartSec=2
+# evdev read access; keep write access off the system
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>keebyd — switch picker</title>
+<style>
+:root{--bg:#0e0e10;--panel:#17171a;--panel2:#1e1e22;--line:#2a2a30;--fg:#ececf0;--dim:#9a9aa3;--accent:#9E73C7}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,sans-serif;padding:24px;max-width:1100px;margin:0 auto}
+header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+h1{font-size:20px;font-weight:700;letter-spacing:-.5px}
+.badge{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+.spacer{flex:1}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--fg);border-radius:10px;padding:8px 14px;font-size:13px;transition:background .15s}
+button:hover{background:#2a2a30}
+button.primary{background:var(--accent);border-color:transparent;color:#fff;font-weight:600}
+section{margin-bottom:26px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.brand{margin-bottom:16px}
+.brand h3{font-size:12px;color:var(--dim);margin-bottom:8px;font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;position:relative;transition:border-color .15s,transform .05s}
+.card:hover{border-color:#3d3d46}
+.card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.card:active{transform:scale(.98)}
+.card .row{display:flex;align-items:center;gap:8px}
+.dot{width:14px;height:14px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.2)}
+.name{font-weight:600;font-size:13.5px}
+.meta{font-size:11.5px;color:var(--dim);margin-top:3px}
+.by{font-size:10.5px;color:#77777f;margin-top:2px;font-style:italic}
+.star{position:absolute;top:8px;right:10px;background:none;border:none;color:#55555e;font-size:15px;padding:2px}
+.star.on{color:#f5c542}
+.toggle{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px}
+.toggle label{font-size:13px}
+.sw{width:38px;height:22px;background:#33333b;border-radius:999px;position:relative;transition:background .15s;flex:none}
+.sw:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.sw.on{background:var(--accent)}
+.sw.on:after{left:19px}
+.slider-row{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px}
+.slider-row label{font-size:13px;width:150px;flex:none}
+.slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+.val{font-size:12px;color:var(--dim);width:42px;text-align:right;font-variant-numeric:tabular-nums}
+.pad{background:var(--panel);border:1px solid var(--line);border-radius:14px;height:170px;position:relative;cursor:crosshair;overflow:hidden}
+.pad .dotp{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--accent);transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 12px var(--accent)}
+.pad .x,.pad .y{position:absolute;background:rgba(255,255,255,.06)}
+.pad .x{left:0;right:0;height:1px}
+.pad .y{top:0;bottom:0;width:1px}
+.pad-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:6px}
+#keys{display:grid;grid-template-columns:repeat(15,1fr);gap:3px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
+.key{height:26px;background:var(--panel2);border-radius:5px;font-size:8.5px;display:flex;align-items:center;justify-content:center;color:var(--dim);transition:background .1s,color .1s}
+.key.lit{background:var(--accent);color:#fff}
+.w15{grid-column:span 15}.w2{grid-column:span 2}.w125{grid-column:span 1.5}
+select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
+.hint{font-size:11px;color:var(--dim);margin-top:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>keebyd</h1><span class="badge" id="cur">—</span><span class="badge" id="engine">—</span>
+  <div class="spacer"></div>
+  <button id="muteBtn">Mute</button>
+</header>
+
+<section>
+  <h2>Switches <span style="text-transform:none;letter-spacing:0">— hover to preview, click to choose</span></h2>
+  <div id="switches"></div>
+</section>
+
+<section>
+  <h2>Tone pad <span style="text-transform:none;letter-spacing:0">— drag: left = softer, right = brighter; up = lower pitch, down = higher</span></h2>
+  <div class="pad" id="pad"><div class="x"></div><div class="y"></div><div class="dotp" id="padDot"></div></div>
+  <div class="pad-labels"><span>pitch ↑</span><span>brighter →</span></div>
+</section>
+
+<section>
+  <h2>Sound</h2>
+  <div class="slider-row"><label>Master volume</label><input type="range" id="master" min="0" max="4" step="0.05"><span class="val" id="masterV"></span></div>
+  <div class="slider-row"><label>Home row softness</label><input type="range" id="hrs" min="0" max="2" step="0.05"><span class="val" id="hrsV"></span></div>
+  <div class="slider-row"><label>Enter sound</label>
+    <select id="enter">
+      <option value="">— none —</option>
+      <option value="typewriter-enter.mp3">Typewriter</option>
+      <option value="faahh-enter.mp3">Faahh</option>
+    </select>
+  </div>
+  <div class="slider-row"><label>Enter volume</label><input type="range" id="enterV" min="0" max="2" step="0.05"><span class="val" id="enterVV"></span></div>
+  <div class="toggle"><label>Spatial audio <span class="hint">(pan by physical key position)</span></label><div class="sw" data-k="spatial_audio" id="t-spatial"></div></div>
+  <div class="toggle"><label>Per-key feel <span class="hint">(home row softer, stretch keys louder)</span></label><div class="sw" data-k="per_key_feel" id="t-feel"></div></div>
+  <div class="toggle"><label>Volume normalization</label><div class="sw" data-k="volume_normalization" id="t-norm"></div></div>
+  <div class="toggle"><label>Mute modifiers</label><div class="sw" data-k="mute_modifiers" id="t-mmod"></div></div>
+  <div class="toggle"><label>Mouse click sounds</label><div class="sw" data-k="mouse_clicks" id="t-mouse"></div></div>
+  <div class="toggle"><label>Hover preview</label><div class="sw" data-k="hover_preview" id="t-hover"></div></div>
+  <div class="toggle"><label>Enabled</label><div class="sw" data-k="enabled" id="t-enabled"></div></div>
+</section>
+
+<section>
+  <h2>Visualizer</h2>
+  <div id="keys"></div>
+  <p class="hint">Live key events from the daemon (SSE).</p>
+</section>
+
+<script>
+let S = {}; // settings cache
+let profiles = [];
+const $ = id => document.getElementById(id);
+
+async function api(path, method='GET', body) {
+  const r = await fetch(path, {method, body});
+  return r.json();
+}
+
+/* ---------- keyboard visualizer ---------- */
+const ROWS = [
+  [["Esc",1],["F1",59],["F2",60],["F3",61],["F4",62],["F5",63],["F6",64],["F7",65],["F8",66],["F9",67],["F10",68],["F11",87],["F12",88]],
+  [["`",41],["1",2],["2",3],["3",4],["4",5],["5",6],["6",7],["7",8],["8",9],["9",10],["0",11],["-",12],["=",13],["⌫",14,"w2"]],
+  [["Tab",15,"w2"],["Q",16],["W",17],["E",18],["R",19],["T",20],["Y",21],["U",22],["I",23],["O",24],["P",25],["[",26],["]",27],["\\",43]],
+  [["Caps",58,"w2"],["A",30],["S",31],["D",32],["F",33],["G",34],["H",35],["J",36],["K",37],["L",38],[";",39],["'",40],["↵",28,"w2"]],
+  [["Shift",42,"w2"],["Z",44],["X",45],["C",46],["V",47],["B",48],["N",49],["M",50],[",",51],[".",52],["/",53],["Shift",54,"w2"]],
+  [["Ctrl",29],["Win",125],["Alt",56],["Space",57,"w15"],["Alt",100],["Fn",0],["☰",127],["Ctrl",97]],
+  [["←",105],["↑",103],["↓",108],["→",106]],
+];
+function drawKb(){
+  const el=$("keys"); el.innerHTML="";
+  for(const row of ROWS){
+    for(const [label,code,cls] of row){
+      const d=document.createElement("div");
+      d.className="key"+(cls?" "+cls:"");
+      d.dataset.code=code; d.textContent=label;
+      el.appendChild(d);
+    }
+  }
+}
+function lit(code,down){
+  if(!down) return;
+  const k=document.querySelector(`.key[data-code="${code}"]`);
+  if(!k) return;
+  k.classList.add("lit");
+  setTimeout(()=>k.classList.remove("lit"),140);
+}
+const es = new EventSource("/api/events");
+es.onmessage = e => { const j=JSON.parse(e.data); lit(j.code, j.phase===0); };
+
+/* ---------- switches ---------- */
+function renderSwitches(){
+  const byBrand={};
+  for(const p of profiles){
+    (byBrand[p.brand] ||= []).push(p);
+  }
+  const el=$("switches"); el.innerHTML="";
+  for(const [brand,list] of Object.entries(byBrand)){
+    const wrap=document.createElement("div"); wrap.className="brand";
+    wrap.innerHTML=`<h3>${brand}</h3>`;
+    const grid=document.createElement("div"); grid.className="grid";
+    for(const p of list){
+      const c=document.createElement("div");
+      c.className="card"+(p.name===S.profile?" active":"");
+      c.dataset.name=p.name;
+      c.innerHTML=`<button class="star ${p.favorite?'on':''}">★</button>
+        <div class="row"><span class="dot" style="background:${p.color}"></span><span class="name">${p.display}</span></div>
+        <div class="meta">${p.type}</div>
+        ${p.contributor?`<div class="by">by ${p.contributor}</div>`:""}`;
+      c.onclick=async ev=>{
+        if(ev.target.classList.contains("star")) return;
+        await api("/api/select?name="+encodeURIComponent(p.name),"POST");
+        S.profile=p.name; renderSwitches(); $("cur").textContent=p.display;
+        await api("/api/preview?name="+encodeURIComponent(p.name)+"&mode=burst","POST");
+      };
+      c.onmouseenter=async()=>{
+        if(!S.hover_preview) return;
+        await api("/api/preview?name="+encodeURIComponent(p.name)+"&mode=hover","POST");
+      };
+      c.querySelector(".star").onclick=async ev=>{
+        ev.stopPropagation();
+        p.favorite=!p.favorite;
+        await api(`/api/favorites?name=${encodeURIComponent(p.name)}&on=${p.favorite?1:0}`,"POST");
+        renderSwitches();
+      };
+      grid.appendChild(c);
+    }
+    wrap.appendChild(grid); el.appendChild(wrap);
+  }
+}
+
+/* ---------- settings ---------- */
+function bindSwitch(id,key){
+  const el=$(id);
+  el.onclick=async()=>{
+    S[key]=!S[key];
+    el.classList.toggle("on",S[key]);
+    await api("/api/settings","POST",JSON.stringify({[key]:S[key]}));
+  };
+  el.classList.toggle("on",!!S[key]);
+}
+function bindSlider(id,valId,key,fmt){
+  const el=$(id);
+  el.oninput=async()=>{
+    S[key]=parseFloat(el.value);
+    $(valId).textContent=fmt?fmt(S[key]):S[key];
+  };
+  el.onchange=async()=>{ await api("/api/settings","POST",JSON.stringify({[key]:parseFloat(el.value)})); };
+  el.value=S[key]; $(valId).textContent=fmt?fmt(S[key]):S[key];
+}
+
+/* ---------- tone pad ---------- */
+const pad=$("pad");
+let padDown=false;
+function setPad(ev){
+  const r=pad.getBoundingClientRect();
+  const x=Math.min(Math.max((ev.clientX-r.left)/r.width,0),1);
+  const y=Math.min(Math.max((ev.clientY-r.top)/r.height,0),1);
+  S.tone_lpf=+x.toFixed(3); S.tone_pitch=+(0.88+0.24*y).toFixed(3);
+  $("padDot").style.left=(x*100)+"%"; $("padDot").style.top=(y*100)+"%";
+  api("/api/settings","POST",JSON.stringify({tone_lpf:S.tone_lpf,tone_pitch:S.tone_pitch}));
+}
+pad.addEventListener("pointerdown",e=>{padDown=true;setPad(e);pad.setPointerCapture(e.pointerId)});
+pad.addEventListener("pointermove",e=>{if(padDown)setPad(e)});
+pad.addEventListener("pointerup",()=>padDown=false);
+function placePad(){
+  const x=S.tone_lpf??0.5, y=((S.tone_pitch??1)-0.88)/0.24;
+  $("padDot").style.left=(x*100)+"%"; $("padDot").style.top=(y*100)+"%";
+}
+
+/* ---------- init ---------- */
+async function refresh(){
+  profiles = (await api("/api/profiles")).profiles;
+  S = await api("/api/settings");
+  const st = await api("/api/status");
+  const cur = profiles.find(p=>p.name===S.profile);
+  $("cur").textContent = cur?cur.display:S.profile;
+  $("engine").textContent = st.muted?"muted":"live";
+  $("muteBtn").textContent = st.muted?"Unmute":"Mute";
+  bindSwitch("t-spatial","spatial_audio");
+  bindSwitch("t-feel","per_key_feel");
+  bindSwitch("t-norm","volume_normalization");
+  bindSwitch("t-mmod","mute_modifiers");
+  bindSwitch("t-mouse","mouse_clicks");
+  bindSwitch("t-hover","hover_preview");
+  bindSwitch("t-enabled","enabled");
+  bindSlider("master","masterV","master_volume",v=>v.toFixed(2));
+  bindSlider("hrs","hrsV","home_row_softness",v=>v.toFixed(2));
+  bindSlider("enterV","enterVV","enter_volume",v=>v.toFixed(2));
+  $("enter").value=S.enter_sound||"";
+  $("enter").onchange=async()=>{ S.enter_sound=$("enter").value; await api("/api/settings","POST",JSON.stringify({enter_sound:S.enter_sound})); };
+  placePad();
+  renderSwitches();
+}
+$("muteBtn").onclick=async()=>{ await api("/api/toggle-mute","POST"); refresh(); };
+drawKb(); refresh();
+</script>
+</body>
+</html>

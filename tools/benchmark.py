@@ -31,7 +31,7 @@ import wave
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-KEEBYD = os.path.join(ROOT, "bin", "keebyd")
+KEEBYD = os.environ.get("KEEBYD_BIN", os.path.join(ROOT, "target", "release", "keebyd"))
 SR = 44100
 
 # decompiled SwitchCatalog normalization gains

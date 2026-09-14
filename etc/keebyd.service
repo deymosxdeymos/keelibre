@@ -4,7 +4,7 @@ After=pipewire.service wireplumber.service
 Wants=pipewire.service
 
 [Service]
-ExecStart=%h/.local/bin/keebyd
+ExecStart=%h/.local/bin/keebyd --headless
 Restart=on-failure
 RestartSec=2
 # evdev read access; keep write access off the system

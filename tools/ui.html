@@ -2,251 +2,69 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>keebyd — switch picker</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Keebyd</title>
 <style>
-:root{--bg:#0e0e10;--panel:#17171a;--panel2:#1e1e22;--line:#2a2a30;--fg:#ececf0;--dim:#9a9aa3;--accent:#9E73C7}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,sans-serif;padding:24px;max-width:1100px;margin:0 auto}
-header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
-h1{font-size:20px;font-weight:700;letter-spacing:-.5px}
-.badge{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
-.spacer{flex:1}
-button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--fg);border-radius:10px;padding:8px 14px;font-size:13px;transition:background .15s}
-button:hover{background:#2a2a30}
-button.primary{background:var(--accent);border-color:transparent;color:#fff;font-weight:600}
-section{margin-bottom:26px}
-h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin-bottom:10px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
-.brand{margin-bottom:16px}
-.brand h3{font-size:12px;color:var(--dim);margin-bottom:8px;font-weight:600}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;position:relative;transition:border-color .15s,transform .05s}
-.card:hover{border-color:#3d3d46}
-.card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.card:active{transform:scale(.98)}
-.card .row{display:flex;align-items:center;gap:8px}
-.dot{width:14px;height:14px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.2)}
-.name{font-weight:600;font-size:13.5px}
-.meta{font-size:11.5px;color:var(--dim);margin-top:3px}
-.by{font-size:10.5px;color:#77777f;margin-top:2px;font-style:italic}
-.star{position:absolute;top:8px;right:10px;background:none;border:none;color:#55555e;font-size:15px;padding:2px}
-.star.on{color:#f5c542}
-.toggle{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px}
-.toggle label{font-size:13px}
-.sw{width:38px;height:22px;background:#33333b;border-radius:999px;position:relative;transition:background .15s;flex:none}
-.sw:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
-.sw.on{background:var(--accent)}
-.sw.on:after{left:19px}
-.slider-row{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px}
-.slider-row label{font-size:13px;width:150px;flex:none}
-.slider-row input[type=range]{flex:1;accent-color:var(--accent)}
-.val{font-size:12px;color:var(--dim);width:42px;text-align:right;font-variant-numeric:tabular-nums}
-.pad{background:var(--panel);border:1px solid var(--line);border-radius:14px;height:170px;position:relative;cursor:crosshair;overflow:hidden}
-.pad .dotp{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--accent);transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 12px var(--accent)}
-.pad .x,.pad .y{position:absolute;background:rgba(255,255,255,.06)}
-.pad .x{left:0;right:0;height:1px}
-.pad .y{top:0;bottom:0;width:1px}
-.pad-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:6px}
-#keys{display:grid;grid-template-columns:repeat(15,1fr);gap:3px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
-.key{height:26px;background:var(--panel2);border-radius:5px;font-size:8.5px;display:flex;align-items:center;justify-content:center;color:var(--dim);transition:background .1s,color .1s}
-.key.lit{background:var(--accent);color:#fff}
-.w15{grid-column:span 15}.w2{grid-column:span 2}.w125{grid-column:span 1.5}
-select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
-.hint{font-size:11px;color:var(--dim);margin-top:4px}
+:root{--ink:#f5f1ea;--muted:#99958d;--bg:#0b0b0c;--panel:#131315;--raised:#19191c;--line:#29292d;--accent:#d89cff;--accent-rgb:216,156,255;--good:#72d6a0;--radius:18px}
+*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;color:var(--ink);background:radial-gradient(circle at 70% -10%,rgba(var(--accent-rgb),.09),transparent 35rem),var(--bg);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;min-height:100vh}
+button,input,select{font:inherit}button{color:inherit}.shell{width:min(1440px,100%);margin:auto;padding:20px;display:grid;grid-template-columns:280px minmax(0,1fr);gap:20px}.sidebar{height:calc(100vh - 40px);position:sticky;top:20px;display:flex;flex-direction:column;background:rgba(19,19,21,.86);border:1px solid var(--line);border-radius:24px;padding:20px;backdrop-filter:blur(20px)}
+.brand{display:flex;align-items:center;gap:12px}.mark{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:var(--accent);color:#161117;font-weight:900;box-shadow:0 8px 28px rgba(var(--accent-rgb),.2)}h1{font-size:18px;line-height:1;margin:0;letter-spacing:-.03em}.eyebrow{font-size:11px;color:var(--muted);margin-top:4px}.status{margin-top:28px;padding:16px;border-radius:16px;background:var(--raised);border:1px solid var(--line)}.status-top{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.pulse{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 4px rgba(114,214,160,.1)}.current{font-size:18px;font-weight:650;letter-spacing:-.03em;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav{display:grid;gap:4px;margin-top:20px}.nav a{color:var(--muted);text-decoration:none;padding:10px 12px;border-radius:10px}.nav a:hover,.nav a:focus-visible{background:var(--raised);color:var(--ink)}.sidebar-bottom{margin-top:auto}.mute{width:100%;min-height:46px;border:1px solid var(--line);background:var(--raised);border-radius:13px;cursor:pointer}.mute:hover{border-color:#44444a}.shortcut{color:var(--muted);font-size:11px;text-align:center;margin:10px 0 0}.main{min-width:0;padding:4px 4px 70px}.hero{padding:28px 8px 34px}.hero h2{font-size:clamp(30px,4vw,48px);line-height:1.03;letter-spacing:-.055em;margin:0;max-width:700px}.hero p{color:var(--muted);font-size:15px;max-width:560px;margin:14px 0 0}
+.section{margin-bottom:38px;scroll-margin-top:20px}.section-head{display:flex;align-items:end;justify-content:space-between;margin:0 2px 12px}.section h3{font-size:14px;letter-spacing:-.01em;margin:0}.section-note{font-size:12px;color:var(--muted)}.switch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}.switch-card{position:relative;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:16px}.choose{width:100%;min-height:112px;text-align:left;border:0;background:transparent;padding:17px;cursor:pointer;border-radius:inherit}.switch-card.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent),0 12px 34px rgba(var(--accent-rgb),.08)}.switch-card.active:before{content:"";position:absolute;inset:auto 14px 0;height:1px;background:var(--accent);box-shadow:0 -4px 18px var(--accent)}.switch-name{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:30px}.switch-brand,.switch-kind{font-size:12px;color:var(--muted);margin-top:5px}.swatch{width:22px;height:22px;border-radius:8px;border:1px solid rgba(255,255,255,.16);margin-bottom:14px}.star{position:absolute;right:8px;top:8px;width:44px;height:44px;border:0;background:transparent;color:#5f5c61;font-size:18px;cursor:pointer;border-radius:10px}.star.on{color:#f4cb67}.star:hover{background:rgba(255,255,255,.04)}
+.studio{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}.card-title{font-size:12px;color:var(--muted);margin-bottom:14px}.tone-pad{height:240px;border-radius:14px;position:relative;overflow:hidden;cursor:crosshair;touch-action:none;background:linear-gradient(90deg,#211c23,rgba(var(--accent-rgb),.22)),linear-gradient(0deg,rgba(255,255,255,.08),transparent);border:1px solid #38333b}.tone-pad:before,.tone-pad:after{content:"";position:absolute;background:rgba(255,255,255,.09)}.tone-pad:before{left:50%;top:0;bottom:0;width:1px}.tone-pad:after{top:50%;left:0;right:0;height:1px}.tone-dot{position:absolute;width:22px;height:22px;border:3px solid white;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 2px 18px rgba(0,0,0,.6);pointer-events:none}.axes{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:8px}.sliders{display:grid;gap:18px}.control label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:9px}.value{color:var(--muted);font-variant-numeric:tabular-nums}input[type=range]{appearance:none;width:100%;height:4px;border-radius:99px;background:#323238;accent-color:var(--accent)}input[type=range]::-webkit-slider-thumb{appearance:none;width:18px;height:18px;border-radius:50%;background:var(--ink);box-shadow:0 2px 8px #000;cursor:grab}.settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.setting{min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 10px 8px 15px}.setting-copy{min-width:0}.setting-name{font-size:13px}.setting-help{color:var(--muted);font-size:11px;margin-top:2px}.toggle{width:46px;height:28px;border:0;border-radius:99px;background:#333339;padding:3px;cursor:pointer;flex:none}.toggle span{display:block;width:22px;height:22px;background:#aaa7a1;border-radius:50%;transition:transform 180ms cubic-bezier(.2,.8,.2,1),background-color 180ms ease}.toggle.on{background:var(--accent)}.toggle.on span{transform:translateX(18px);background:#171219}
+.keyboard{padding:14px;display:grid;gap:5px}.key-row{display:flex;gap:5px}.key{height:38px;min-width:0;flex:1;display:grid;place-items:center;border:1px solid var(--line);background:var(--raised);border-radius:8px;color:#77747a;font-size:10px;transition:background-color 80ms ease,color 80ms ease,transform 80ms ease}.key.wide{flex:1.6}.key.space{flex:6}.key.lit{background:var(--accent);color:#181319;transform:translateY(2px)}select{width:100%;min-height:44px;color:var(--ink);background:var(--raised);border:1px solid var(--line);border-radius:11px;padding:0 12px}.notice{display:none;position:fixed;right:24px;bottom:24px;background:var(--ink);color:#171719;border-radius:12px;padding:12px 16px;box-shadow:0 14px 40px #000;z-index:2}.notice.show{display:block}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}@media(hover:hover){.switch-card:hover{border-color:#454149;transform:translateY(-1px)}.switch-card{transition:border-color 150ms ease,transform 150ms ease}}
+@media(max-width:850px){.shell{display:block;padding:12px}.sidebar{height:auto;position:relative;top:0;margin-bottom:18px}.nav{display:none}.sidebar-bottom{margin-top:18px}.main{padding-inline:0}.studio{grid-template-columns:1fr}.settings{grid-template-columns:1fr}.keyboard{overflow-x:auto}.key-row{min-width:650px}.hero{padding-inline:4px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:0s!important}}
 </style>
 </head>
 <body>
-<header>
-  <h1>keebyd</h1><span class="badge" id="cur">—</span><span class="badge" id="engine">—</span>
-  <div class="spacer"></div>
-  <button id="muteBtn">Mute</button>
-</header>
-
-<section>
-  <h2>Switches <span style="text-transform:none;letter-spacing:0">— hover to preview, click to choose</span></h2>
-  <div id="switches"></div>
-</section>
-
-<section>
-  <h2>Tone pad <span style="text-transform:none;letter-spacing:0">— drag: left = softer, right = brighter; up = lower pitch, down = higher</span></h2>
-  <div class="pad" id="pad"><div class="x"></div><div class="y"></div><div class="dotp" id="padDot"></div></div>
-  <div class="pad-labels"><span>pitch ↑</span><span>brighter →</span></div>
-</section>
-
-<section>
-  <h2>Sound</h2>
-  <div class="slider-row"><label>Master volume</label><input type="range" id="master" min="0" max="4" step="0.05"><span class="val" id="masterV"></span></div>
-  <div class="slider-row"><label>Home row softness</label><input type="range" id="hrs" min="0" max="2" step="0.05"><span class="val" id="hrsV"></span></div>
-  <div class="slider-row"><label>Enter sound</label>
-    <select id="enter">
-      <option value="">— none —</option>
-      <option value="typewriter-enter.mp3">Typewriter</option>
-      <option value="faahh-enter.mp3">Faahh</option>
-    </select>
-  </div>
-  <div class="slider-row"><label>Enter volume</label><input type="range" id="enterV" min="0" max="2" step="0.05"><span class="val" id="enterVV"></span></div>
-  <div class="toggle"><label>Spatial audio <span class="hint">(pan by physical key position)</span></label><div class="sw" data-k="spatial_audio" id="t-spatial"></div></div>
-  <div class="toggle"><label>Per-key feel <span class="hint">(home row softer, stretch keys louder)</span></label><div class="sw" data-k="per_key_feel" id="t-feel"></div></div>
-  <div class="toggle"><label>Volume normalization</label><div class="sw" data-k="volume_normalization" id="t-norm"></div></div>
-  <div class="toggle"><label>Mute modifiers</label><div class="sw" data-k="mute_modifiers" id="t-mmod"></div></div>
-  <div class="toggle"><label>Mouse click sounds</label><div class="sw" data-k="mouse_clicks" id="t-mouse"></div></div>
-  <div class="toggle"><label>Hover preview</label><div class="sw" data-k="hover_preview" id="t-hover"></div></div>
-  <div class="toggle"><label>Enabled</label><div class="sw" data-k="enabled" id="t-enabled"></div></div>
-</section>
-
-<section>
-  <h2>Visualizer</h2>
-  <div id="keys"></div>
-  <p class="hint">Live key events from the daemon (SSE).</p>
-</section>
-
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand"><div class="mark">K</div><div><h1>keebyd</h1><div class="eyebrow">keyboard sound engine</div></div></div>
+  <div class="status"><div class="status-top"><span class="pulse" id="pulse"></span><span id="engine">Connecting</span></div><div class="current" id="current">Loading...</div></div>
+  <nav class="nav" aria-label="Control panel"><a href="#switches">Switch library</a><a href="#studio">Tone studio</a><a href="#behavior">Behavior</a><a href="#visualizer">Visualizer</a></nav>
+  <div class="sidebar-bottom"><button class="mute" id="mute">Mute audio</button><p class="shortcut">Ctrl + K three times</p></div>
+</aside>
+<main class="main">
+  <header class="hero"><h2>Make every key feel like yours.</h2><p>Choose a switch, shape its tone, and tune how your keyboard moves through the stereo field.</p></header>
+  <section class="section" id="switches"><div class="section-head"><h3>Switch library</h3><span class="section-note">Select to preview</span></div><div class="switch-grid" id="switchGrid"></div></section>
+  <section class="section" id="studio"><div class="section-head"><h3>Tone studio</h3><span class="section-note">Drag to shape the sound</span></div><div class="studio">
+    <div class="card"><div class="card-title">Warmth and pitch</div><div class="tone-pad" id="pad" role="slider" tabindex="0" aria-label="Tone warmth and pitch"><div class="tone-dot" id="toneDot"></div></div><div class="axes"><span>soft</span><span>bright</span></div></div>
+    <div class="card"><div class="card-title">Output</div><div class="sliders">
+      <div class="control"><label for="volume">Master volume <span class="value" id="volumeValue"></span></label><input id="volume" type="range" min="0" max="4" step=".05"></div>
+      <div class="control"><label for="softness">Home-row softness <span class="value" id="softnessValue"></span></label><input id="softness" type="range" min="0" max="2" step=".05"></div>
+      <div class="control"><label for="enterVolume">Enter accent <span class="value" id="enterVolumeValue"></span></label><input id="enterVolume" type="range" min="0" max="2" step=".05"></div>
+      <div class="control"><label for="enterSound">Enter sound</label><select id="enterSound"><option value="">None</option><option value="typewriter-enter.mp3">Typewriter</option><option value="faahh-enter.mp3">Faahh</option></select></div>
+    </div></div>
+  </div></section>
+  <section class="section" id="behavior"><div class="section-head"><h3>Behavior</h3></div><div class="settings" id="settings"></div></section>
+  <section class="section" id="visualizer"><div class="section-head"><h3>Live keyboard</h3><span class="section-note">Events stay on this machine</span></div><div class="card keyboard" id="keyboard"></div></section>
+</main></div><div class="notice" id="notice" role="status"></div>
 <script>
-let S = {}; // settings cache
-let profiles = [];
-const $ = id => document.getElementById(id);
-
-async function api(path, method='GET', body) {
-  const r = await fetch(path, {method, body});
-  return r.json();
-}
-
-/* ---------- keyboard visualizer ---------- */
-const ROWS = [
-  [["Esc",1],["F1",59],["F2",60],["F3",61],["F4",62],["F5",63],["F6",64],["F7",65],["F8",66],["F9",67],["F10",68],["F11",87],["F12",88]],
-  [["`",41],["1",2],["2",3],["3",4],["4",5],["5",6],["6",7],["7",8],["8",9],["9",10],["0",11],["-",12],["=",13],["⌫",14,"w2"]],
-  [["Tab",15,"w2"],["Q",16],["W",17],["E",18],["R",19],["T",20],["Y",21],["U",22],["I",23],["O",24],["P",25],["[",26],["]",27],["\\",43]],
-  [["Caps",58,"w2"],["A",30],["S",31],["D",32],["F",33],["G",34],["H",35],["J",36],["K",37],["L",38],[";",39],["'",40],["↵",28,"w2"]],
-  [["Shift",42,"w2"],["Z",44],["X",45],["C",46],["V",47],["B",48],["N",49],["M",50],[",",51],[".",52],["/",53],["Shift",54,"w2"]],
-  [["Ctrl",29],["Win",125],["Alt",56],["Space",57,"w15"],["Alt",100],["Fn",0],["☰",127],["Ctrl",97]],
-  [["←",105],["↑",103],["↓",108],["→",106]],
+const $=id=>document.getElementById(id);let state={},profiles=[],padActive=false,saveTimer;
+const api=async(path,options={})=>{const response=await fetch(path,{headers:{"Content-Type":"application/json"},...options});if(!response.ok)throw new Error((await response.json()).error||response.statusText);return response.json()};
+const report=message=>{const el=$("notice");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2400)};
+const save=patch=>{Object.assign(state,patch);clearTimeout(saveTimer);saveTimer=setTimeout(()=>api("/api/settings",{method:"POST",body:JSON.stringify(patch)}).catch(error=>report(error.message)),90)};
+const controls=[
+  ["spatial_audio","Spatial audio","Pan by physical key position"],["per_key_feel","Per-key feel","Softer home row, louder stretch keys"],
+  ["volume_normalization","Volume normalization","Balance loudness between switch packs"],["mute_modifiers","Mute modifiers","Keep Shift, Control, and Alt quiet"],
+  ["mouse_clicks","Mouse clicks","Play sounds for mouse buttons"],["hover_preview","Hover preview","Audition switches while browsing"],
+  ["enabled","Engine enabled","Process keyboard sounds"]
 ];
-function drawKb(){
-  const el=$("keys"); el.innerHTML="";
-  for(const row of ROWS){
-    for(const [label,code,cls] of row){
-      const d=document.createElement("div");
-      d.className="key"+(cls?" "+cls:"");
-      d.dataset.code=code; d.textContent=label;
-      el.appendChild(d);
-    }
-  }
-}
-function lit(code,down){
-  if(!down) return;
-  const k=document.querySelector(`.key[data-code="${code}"]`);
-  if(!k) return;
-  k.classList.add("lit");
-  setTimeout(()=>k.classList.remove("lit"),140);
-}
-const es = new EventSource("/api/events");
-es.onmessage = e => { const j=JSON.parse(e.data); lit(j.code, j.phase===0); };
-
-/* ---------- switches ---------- */
-function renderSwitches(){
-  const byBrand={};
-  for(const p of profiles){
-    (byBrand[p.brand] ||= []).push(p);
-  }
-  const el=$("switches"); el.innerHTML="";
-  for(const [brand,list] of Object.entries(byBrand)){
-    const wrap=document.createElement("div"); wrap.className="brand";
-    wrap.innerHTML=`<h3>${brand}</h3>`;
-    const grid=document.createElement("div"); grid.className="grid";
-    for(const p of list){
-      const c=document.createElement("div");
-      c.className="card"+(p.name===S.profile?" active":"");
-      c.dataset.name=p.name;
-      c.innerHTML=`<button class="star ${p.favorite?'on':''}">★</button>
-        <div class="row"><span class="dot" style="background:${p.color}"></span><span class="name">${p.display}</span></div>
-        <div class="meta">${p.type}</div>
-        ${p.contributor?`<div class="by">by ${p.contributor}</div>`:""}`;
-      c.onclick=async ev=>{
-        if(ev.target.classList.contains("star")) return;
-        await api("/api/select?name="+encodeURIComponent(p.name),"POST");
-        S.profile=p.name; renderSwitches(); $("cur").textContent=p.display;
-        await api("/api/preview?name="+encodeURIComponent(p.name)+"&mode=burst","POST");
-      };
-      c.onmouseenter=async()=>{
-        if(!S.hover_preview) return;
-        await api("/api/preview?name="+encodeURIComponent(p.name)+"&mode=hover","POST");
-      };
-      c.querySelector(".star").onclick=async ev=>{
-        ev.stopPropagation();
-        p.favorite=!p.favorite;
-        await api(`/api/favorites?name=${encodeURIComponent(p.name)}&on=${p.favorite?1:0}`,"POST");
-        renderSwitches();
-      };
-      grid.appendChild(c);
-    }
-    wrap.appendChild(grid); el.appendChild(wrap);
-  }
-}
-
-/* ---------- settings ---------- */
-function bindSwitch(id,key){
-  const el=$(id);
-  el.onclick=async()=>{
-    S[key]=!S[key];
-    el.classList.toggle("on",S[key]);
-    await api("/api/settings","POST",JSON.stringify({[key]:S[key]}));
-  };
-  el.classList.toggle("on",!!S[key]);
-}
-function bindSlider(id,valId,key,fmt){
-  const el=$(id);
-  el.oninput=async()=>{
-    S[key]=parseFloat(el.value);
-    $(valId).textContent=fmt?fmt(S[key]):S[key];
-  };
-  el.onchange=async()=>{ await api("/api/settings","POST",JSON.stringify({[key]:parseFloat(el.value)})); };
-  el.value=S[key]; $(valId).textContent=fmt?fmt(S[key]):S[key];
-}
-
-/* ---------- tone pad ---------- */
-const pad=$("pad");
-let padDown=false;
-function setPad(ev){
-  const r=pad.getBoundingClientRect();
-  const x=Math.min(Math.max((ev.clientX-r.left)/r.width,0),1);
-  const y=Math.min(Math.max((ev.clientY-r.top)/r.height,0),1);
-  S.tone_lpf=+x.toFixed(3); S.tone_pitch=+(0.88+0.24*y).toFixed(3);
-  $("padDot").style.left=(x*100)+"%"; $("padDot").style.top=(y*100)+"%";
-  api("/api/settings","POST",JSON.stringify({tone_lpf:S.tone_lpf,tone_pitch:S.tone_pitch}));
-}
-pad.addEventListener("pointerdown",e=>{padDown=true;setPad(e);pad.setPointerCapture(e.pointerId)});
-pad.addEventListener("pointermove",e=>{if(padDown)setPad(e)});
-pad.addEventListener("pointerup",()=>padDown=false);
-function placePad(){
-  const x=S.tone_lpf??0.5, y=((S.tone_pitch??1)-0.88)/0.24;
-  $("padDot").style.left=(x*100)+"%"; $("padDot").style.top=(y*100)+"%";
-}
-
-/* ---------- init ---------- */
-async function refresh(){
-  profiles = (await api("/api/profiles")).profiles;
-  S = await api("/api/settings");
-  const st = await api("/api/status");
-  const cur = profiles.find(p=>p.name===S.profile);
-  $("cur").textContent = cur?cur.display:S.profile;
-  $("engine").textContent = st.muted?"muted":"live";
-  $("muteBtn").textContent = st.muted?"Unmute":"Mute";
-  bindSwitch("t-spatial","spatial_audio");
-  bindSwitch("t-feel","per_key_feel");
-  bindSwitch("t-norm","volume_normalization");
-  bindSwitch("t-mmod","mute_modifiers");
-  bindSwitch("t-mouse","mouse_clicks");
-  bindSwitch("t-hover","hover_preview");
-  bindSwitch("t-enabled","enabled");
-  bindSlider("master","masterV","master_volume",v=>v.toFixed(2));
-  bindSlider("hrs","hrsV","home_row_softness",v=>v.toFixed(2));
-  bindSlider("enterV","enterVV","enter_volume",v=>v.toFixed(2));
-  $("enter").value=S.enter_sound||"";
-  $("enter").onchange=async()=>{ S.enter_sound=$("enter").value; await api("/api/settings","POST",JSON.stringify({enter_sound:S.enter_sound})); };
-  placePad();
-  renderSwitches();
-}
-$("muteBtn").onclick=async()=>{ await api("/api/toggle-mute","POST"); refresh(); };
-drawKb(); refresh();
+function renderControls(){const root=$("settings");root.replaceChildren(...controls.map(([key,name,help])=>{const row=document.createElement("div");row.className="setting";const copy=document.createElement("div");copy.className="setting-copy";copy.innerHTML=`<div class="setting-name">${name}</div><div class="setting-help">${help}</div>`;const button=document.createElement("button");button.className="toggle"+(state[key]?" on":"");button.setAttribute("role","switch");button.setAttribute("aria-checked",state[key]);button.setAttribute("aria-label",name);button.innerHTML="<span></span>";button.onclick=()=>{state[key]=!state[key];button.classList.toggle("on",state[key]);button.setAttribute("aria-checked",state[key]);save({[key]:state[key]})};row.append(copy,button);return row}))}
+function renderProfiles(){const root=$("switchGrid");root.replaceChildren(...profiles.map(profile=>{const card=document.createElement("article");card.className="switch-card"+(profile.name===state.profile?" active":"");const choose=document.createElement("button");choose.className="choose";choose.innerHTML=`<div class="swatch" style="background:${profile.color}"></div><div class="switch-name">${profile.display}</div><div class="switch-brand">${profile.brand}</div><div class="switch-kind">${profile.type}</div>`;choose.onclick=async()=>{try{await api(`/api/select?name=${encodeURIComponent(profile.name)}`,{method:"POST"});state.profile=profile.name;$("current").textContent=profile.display;renderProfiles();await preview(profile.name)}catch(error){report(error.message)}};choose.onmouseenter=()=>state.hover_preview&&preview(profile.name);const star=document.createElement("button");star.className="star"+(profile.favorite?" on":"");star.textContent="★";star.setAttribute("aria-label",`${profile.favorite?"Remove":"Add"} ${profile.display} ${profile.favorite?"from":"to"} favorites`);star.onclick=async()=>{profile.favorite=!profile.favorite;star.classList.toggle("on",profile.favorite);await api(`/api/favorites?name=${encodeURIComponent(profile.name)}&on=${Number(profile.favorite)}`,{method:"POST"})};card.append(choose,star);return card}))}
+let lastPreview=0;async function preview(name){const now=Date.now();if(now-lastPreview<120)return;lastPreview=now;try{await api(`/api/preview?name=${encodeURIComponent(name)}`,{method:"POST"})}catch{}}
+function bindRange(id,valueId,key){const input=$(id),value=$(valueId);input.value=state[key];value.textContent=Number(state[key]).toFixed(2);input.oninput=()=>{value.textContent=Number(input.value).toFixed(2);save({[key]:Number(input.value)})}}
+function placeTone(){const x=state.tone_lpf??.5,y=((state.tone_pitch??1)-.88)/.24;$("toneDot").style.left=`${x*100}%`;$("toneDot").style.top=`${y*100}%`;$("pad").setAttribute("aria-valuetext",`warmth ${Math.round(x*100)} percent, pitch ${state.tone_pitch.toFixed(2)}`)}
+function setTone(event){const rect=$("pad").getBoundingClientRect(),x=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y=Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height));state.tone_lpf=+x.toFixed(3);state.tone_pitch=+(.88+.24*y).toFixed(3);placeTone();save({tone_lpf:state.tone_lpf,tone_pitch:state.tone_pitch})}
+const rows=[[['Esc',1],['F1',59],['F2',60],['F3',61],['F4',62],['F5',63],['F6',64],['F7',65],['F8',66],['F9',67],['F10',68],['F11',87],['F12',88]],[['`',41],['1',2],['2',3],['3',4],['4',5],['5',6],['6',7],['7',8],['8',9],['9',10],['0',11],['-',12],['=',13],['⌫',14,'wide']],[['Tab',15,'wide'],['Q',16],['W',17],['E',18],['R',19],['T',20],['Y',21],['U',22],['I',23],['O',24],['P',25],['[',26],[']',27],['\\',43]],[['Caps',58,'wide'],['A',30],['S',31],['D',32],['F',33],['G',34],['H',35],['J',36],['K',37],['L',38],[';',39],["'",40],['Enter',28,'wide']],[['Shift',42,'wide'],['Z',44],['X',45],['C',46],['V',47],['B',48],['N',49],['M',50],[',',51],['.',52],['/',53],['Shift',54,'wide']],[['Ctrl',29],['Meta',125],['Alt',56],['Space',57,'space'],['Alt',100],['Menu',127],['Ctrl',97]]];
+function drawKeyboard(){$("keyboard").replaceChildren(...rows.map(row=>{const line=document.createElement("div");line.className="key-row";for(const [label,code,size]of row){const key=document.createElement("div");key.className="key"+(size?` ${size}`:"");key.dataset.code=code;key.textContent=label;line.append(key)}return line}))}
+async function init(){try{[state,{profiles}]=await Promise.all([api("/api/settings"),api("/api/profiles")]);window.profiles=profiles;const status=await api("/api/status");const selected=profiles.find(profile=>profile.name===state.profile);$("current").textContent=selected?.display||state.profile;$("engine").textContent=status.muted?"Muted":"Engine live";$("pulse").style.background=status.muted?"#777":"var(--good)";$("mute").textContent=status.muted?"Unmute audio":"Mute audio";renderProfiles();renderControls();bindRange("volume","volumeValue","master_volume");bindRange("softness","softnessValue","home_row_softness");bindRange("enterVolume","enterVolumeValue","enter_volume");$("enterSound").value=state.enter_sound;$("enterSound").onchange=event=>save({enter_sound:event.target.value});placeTone()}catch(error){report(error.message)}}
+$("pad").onpointerdown=event=>{padActive=true;$("pad").setPointerCapture(event.pointerId);setTone(event)};$("pad").onpointermove=event=>padActive&&setTone(event);$("pad").onpointerup=()=>padActive=false;$("pad").onkeydown=event=>{const step=event.shiftKey?.05:.01;if(event.key==='ArrowLeft')state.tone_lpf=Math.max(0,state.tone_lpf-step);else if(event.key==='ArrowRight')state.tone_lpf=Math.min(1,state.tone_lpf+step);else if(event.key==='ArrowUp')state.tone_pitch=Math.max(.88,state.tone_pitch-step);else if(event.key==='ArrowDown')state.tone_pitch=Math.min(1.12,state.tone_pitch+step);else return;event.preventDefault();placeTone();save({tone_lpf:state.tone_lpf,tone_pitch:state.tone_pitch})};
+$("mute").onclick=async()=>{const result=await api("/api/toggle-mute",{method:"POST"});$("engine").textContent=result.muted?"Muted":"Engine live";$("pulse").style.background=result.muted?"#777":"var(--good)";$("mute").textContent=result.muted?"Unmute audio":"Mute audio"};
+drawKeyboard();const events=new EventSource("/api/events");events.onmessage=message=>{const event=JSON.parse(message.data),key=document.querySelector(`[data-code="${event.code}"]`);if(key&&event.phase===0){key.classList.add("lit");setTimeout(()=>key.classList.remove("lit"),110)}};init();
 </script>
 </body>
 </html>

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Keebyd
+Comment=Control mechanical keyboard sounds
+Exec=keebyd --window http://127.0.0.1:7777
+Terminal=false
+Categories=AudioVideo;Audio;Settings;
+StartupNotify=true

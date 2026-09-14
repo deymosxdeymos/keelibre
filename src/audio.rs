@@ -1,0 +1,296 @@
+use std::{
+    collections::HashMap,
+    f32::consts::FRAC_PI_4,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use anyhow::{Context, Result};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use parking_lot::{Mutex, RwLock};
+
+use crate::{
+    SAMPLE_RATE,
+    config::Config,
+    keymap::KeyGroup,
+    sound::{Phase, Profile, Sample},
+};
+
+const MAX_VOICES: usize = 64;
+
+#[derive(Clone)]
+pub struct AudioEngine {
+    mixer: Arc<Mutex<Mixer>>,
+    profile: Arc<RwLock<Option<Arc<Profile>>>>,
+    settings: Arc<RwLock<Config>>,
+    muted: Arc<AtomicBool>,
+}
+
+impl AudioEngine {
+    #[must_use]
+    pub fn new(settings: Config) -> Self {
+        Self {
+            mixer: Arc::new(Mutex::new(Mixer::default())),
+            profile: Arc::default(),
+            settings: Arc::new(RwLock::new(settings)),
+            muted: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn set_profile(&self, profile: Profile) {
+        *self.profile.write() = Some(Arc::new(profile));
+        self.mixer.lock().round_robin.clear();
+    }
+
+    #[must_use]
+    pub fn profile(&self) -> Option<Arc<Profile>> {
+        self.profile.read().clone()
+    }
+
+    pub fn apply_settings(&self, settings: Config) {
+        *self.settings.write() = settings;
+    }
+
+    #[must_use]
+    pub fn settings(&self) -> Config {
+        self.settings.read().clone()
+    }
+
+    #[must_use]
+    pub fn muted(&self) -> bool {
+        self.muted.load(Ordering::Relaxed)
+    }
+
+    pub fn set_muted(&self, muted: bool) {
+        self.muted.store(muted, Ordering::Relaxed);
+    }
+
+    #[must_use]
+    pub fn toggle_muted(&self) -> bool {
+        let next = !self.muted();
+        self.set_muted(next);
+        next
+    }
+
+    pub fn play(&self, group: KeyGroup, phase: Phase, pan: f32, feel: f32) {
+        let config = self.settings.read();
+        if !config.enabled || self.muted() || config.mute_modifiers && group == KeyGroup::Modifier {
+            return;
+        }
+        let Some(profile) = self.profile() else {
+            return;
+        };
+        let actual_group = if profile.variations(group, phase).is_some() {
+            group
+        } else {
+            KeyGroup::Alpha
+        };
+        let Some(variations) = profile.variations(actual_group, phase) else {
+            return;
+        };
+        let mut mixer = self.mixer.lock();
+        let index = mixer.next_variation(actual_group, phase, variations.len());
+        let feel = if config.per_key_feel {
+            if feel < 1.0 {
+                1.0 + (feel - 1.0) * config.home_row_softness
+            } else {
+                feel
+            }
+        } else {
+            1.0
+        };
+        let normalization = if config.volume_normalization {
+            profile.normalization_gain
+        } else {
+            1.0
+        };
+        mixer.submit(
+            Arc::clone(&variations[index]),
+            if config.spatial_audio { pan } else { 0.0 },
+            feel * normalization * config.master_volume,
+            config.tone_lpf,
+            config.tone_pitch,
+        );
+    }
+
+    pub fn preview(&self, profile: &Profile) {
+        let config = self.settings.read();
+        let Some(sample) = profile
+            .variations(KeyGroup::Alpha, Phase::Down)
+            .and_then(|set| set.first())
+        else {
+            return;
+        };
+        self.mixer.lock().submit(
+            Arc::clone(sample),
+            0.0,
+            config.master_volume,
+            config.tone_lpf,
+            config.tone_pitch,
+        );
+    }
+
+    pub fn mix_into(&self, output: &mut [f32]) {
+        self.mixer.lock().mix(output);
+    }
+}
+
+pub struct AudioOutput {
+    _stream: cpal::Stream,
+}
+
+impl AudioOutput {
+    pub fn open(engine: &AudioEngine) -> Result<Option<Self>> {
+        open_stream(Arc::clone(&engine.mixer), &engine.muted)
+            .map(|stream| stream.map(|stream| Self { _stream: stream }))
+    }
+}
+
+fn open_stream(mixer: Arc<Mutex<Mixer>>, muted: &Arc<AtomicBool>) -> Result<Option<cpal::Stream>> {
+    let host = cpal::default_host();
+    let Some(device) = host.default_output_device() else {
+        tracing::warn!("no audio output device; running silently");
+        return Ok(None);
+    };
+    let supported = device.supported_output_configs()?.find(|range| {
+        range.channels() == 2
+            && range.sample_format() == cpal::SampleFormat::F32
+            && range.min_sample_rate().0 <= SAMPLE_RATE
+            && range.max_sample_rate().0 >= SAMPLE_RATE
+    });
+    let Some(supported) = supported else {
+        tracing::warn!("audio device has no 44.1 kHz stereo f32 mode; running silently");
+        return Ok(None);
+    };
+    let config = supported
+        .with_sample_rate(cpal::SampleRate(SAMPLE_RATE))
+        .config();
+    let muted_in_callback = Arc::clone(muted);
+    let stream = device
+        .build_output_stream(
+            &config,
+            move |output: &mut [f32], _| {
+                output.fill(0.0);
+                if !muted_in_callback.load(Ordering::Relaxed) {
+                    if let Some(mut mixer) = mixer.try_lock() {
+                        mixer.mix(output);
+                    }
+                }
+            },
+            |error| tracing::error!(%error, "audio stream failed"),
+            None,
+        )
+        .context("could not create audio stream")?;
+    stream.play().context("could not start audio stream")?;
+    tracing::info!(device = %device.name().unwrap_or_else(|_| "unknown".into()), "audio output ready");
+    Ok(Some(stream))
+}
+
+#[derive(Default)]
+struct Mixer {
+    voices: Vec<Voice>,
+    round_robin: HashMap<(KeyGroup, Phase), usize>,
+}
+
+impl Mixer {
+    fn next_variation(&mut self, group: KeyGroup, phase: Phase, count: usize) -> usize {
+        let cursor = self.round_robin.entry((group, phase)).or_default();
+        let selected = *cursor % count;
+        *cursor = cursor.wrapping_add(1);
+        selected
+    }
+
+    fn submit(&mut self, sample: Sample, pan: f32, volume: f32, cutoff: f32, pitch: f32) {
+        self.voices.retain(|voice| !voice.finished());
+        if self.voices.len() >= MAX_VOICES {
+            return;
+        }
+        self.voices
+            .push(Voice::new(sample, pan, volume, cutoff, pitch));
+    }
+
+    fn mix(&mut self, output: &mut [f32]) {
+        for voice in &mut self.voices {
+            voice.mix(output);
+        }
+        self.voices.retain(|voice| !voice.finished());
+        for sample in output {
+            if sample.abs() > 0.9 {
+                *sample = sample.tanh();
+            }
+        }
+    }
+}
+
+struct Voice {
+    sample: Sample,
+    position: f32,
+    rate: f32,
+    gain_left: f32,
+    gain_right: f32,
+    volume: f32,
+    lpf_alpha: f32,
+    lpf_makeup: f32,
+    dry: f32,
+    lpf_state: f32,
+}
+
+impl Voice {
+    fn new(sample: Sample, pan: f32, volume: f32, cutoff: f32, pitch: f32) -> Self {
+        let cutoff = cutoff.clamp(0.0, 1.0);
+        let theta = (pan.clamp(-1.0, 1.0) + 1.0) * FRAC_PI_4;
+        Self {
+            sample,
+            position: 0.0,
+            rate: pitch.clamp(0.1, 4.0),
+            gain_left: theta.cos(),
+            gain_right: theta.sin(),
+            volume: volume.clamp(0.0, 4.0),
+            lpf_alpha: if cutoff < 0.99 {
+                (cutoff * cutoff).max(0.06)
+            } else {
+                1.0
+            },
+            lpf_makeup: 1.0 + (1.0 - cutoff).powi(2) * 3.0,
+            dry: (1.0 - cutoff) * 0.45,
+            lpf_state: 0.0,
+        }
+    }
+
+    fn finished(&self) -> bool {
+        self.position as usize + 1 >= self.sample.len()
+    }
+
+    fn mix(&mut self, output: &mut [f32]) {
+        for frame in output.chunks_exact_mut(2) {
+            if self.finished() {
+                break;
+            }
+            let index = self.position as usize;
+            let fraction = self.position - index as f32;
+            let raw = self.sample[index] * (1.0 - fraction) + self.sample[index + 1] * fraction;
+            self.lpf_state += self.lpf_alpha * (raw - self.lpf_state);
+            let sample = if self.lpf_alpha < 1.0 {
+                self.lpf_state * self.lpf_makeup + raw * self.dry
+            } else {
+                raw
+            };
+            frame[0] += sample * self.gain_left * self.volume;
+            frame[1] += sample * self.gain_right * self.volume;
+            self.position += self.rate;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn hard_pan_uses_equal_power_law() {
+        let voice = Voice::new(Arc::from([0.0, 1.0]), -1.0, 1.0, 1.0, 1.0);
+        assert!((voice.gain_left - 1.0).abs() < f32::EPSILON);
+        assert!(voice.gain_right.abs() < 1.0e-6);
+    }
+}

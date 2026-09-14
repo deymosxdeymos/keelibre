@@ -8,7 +8,8 @@ install -m644 etc/keebyd.desktop ~/.local/share/applications/keebyd.desktop
 mkdir -p ~/.config/systemd/user
 cp etc/keebyd.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now keebyd
+systemctl --user enable keebyd
+systemctl --user restart keebyd
 echo
 echo "keebyd installed and running."
 echo "  control panel     : launch Keebyd from your application menu"

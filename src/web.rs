@@ -1,6 +1,7 @@
 use std::{
     convert::Infallible,
     path::{Path, PathBuf},
+    process::Command,
     sync::Arc,
 };
 
@@ -57,6 +58,7 @@ pub async fn serve(port: u16, state: WebState) -> Result<()> {
         .route("/api/profiles", get(profiles))
         .route("/api/select", post(select_profile))
         .route("/api/preview", post(preview))
+        .route("/api/preview-overlay", post(preview_overlay))
         .route("/api/favorites", post(favorite))
         .route("/api/toggle-mute", post(toggle_mute))
         .route("/api/sample", get(sample))
@@ -100,8 +102,23 @@ async fn update_settings(
         settings.set(key, &value)?;
     }
     settings.save(&state.config_path)?;
+    if object.contains_key("auto_start") {
+        set_auto_start(settings.auto_start);
+    }
     state.engine.apply_settings(settings.clone());
     Ok(Json(settings))
+}
+
+fn set_auto_start(enabled: bool) {
+    let action = if enabled { "enable" } else { "disable" };
+    match Command::new("systemctl")
+        .args(["--user", action, "keebyd.service", "keebyd-ui.service"])
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => tracing::warn!(%status, "could not update launch-at-login setting"),
+        Err(error) => tracing::warn!(%error, "could not update launch-at-login setting"),
+    }
 }
 
 #[derive(Serialize)]
@@ -130,7 +147,7 @@ async fn profiles(State(state): State<WebState>) -> Result<Json<Profiles>, ApiEr
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
-            if name == "_shared" || !contains_wav(&entry.path()) {
+            if name == "_shared" || name == "ticks" || !contains_wav(&entry.path()) {
                 return None;
             }
             let meta = catalog::find(&name);
@@ -148,6 +165,23 @@ async fn profiles(State(state): State<WebState>) -> Result<Json<Profiles>, ApiEr
         .collect::<Vec<_>>();
     items.sort_by(|a, b| a.brand.cmp(&b.brand).then(a.display.cmp(&b.display)));
     Ok(Json(Profiles { profiles: items }))
+}
+
+#[derive(Deserialize)]
+struct OverlayQuery {
+    kind: String,
+}
+
+async fn preview_overlay(
+    State(state): State<WebState>,
+    Query(query): Query<OverlayQuery>,
+) -> Result<Json<Value>, ApiError> {
+    match query.kind.as_str() {
+        "mouse" => state.engine.preview_mouse(),
+        "enter" => state.engine.play_enter_overlay(),
+        _ => return Err(ApiError::bad_request("unknown overlay sound")),
+    }
+    Ok(Json(json!({ "ok": true })))
 }
 
 #[derive(Deserialize)]

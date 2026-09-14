@@ -23,6 +23,7 @@ pub struct Config {
     pub sounds_dir: PathBuf,
     pub master_volume: f32,
     pub enabled: bool,
+    pub auto_start: bool,
     pub spatial_audio: bool,
     pub per_key_feel: bool,
     pub home_row_softness: f32,
@@ -40,6 +41,19 @@ pub struct Config {
     pub hover_preview: bool,
     pub enter_sound: String,
     pub enter_volume: f32,
+    pub visualizer_enabled: bool,
+    pub visualizer_timeout: f32,
+    pub visualizer_scale: f32,
+    pub visualizer_follow_cursor: bool,
+    pub visualizer_position: String,
+    pub visualizer_cursor_gap: f32,
+    pub visualizer_glow: String,
+    pub visualizer_frame: String,
+    pub visualizer_keycap: String,
+    pub notch_overlay_enabled: bool,
+    pub notch_overlay_auto_hide: bool,
+    pub show_lizard_switch: bool,
+    pub show_faah_enter_sound: bool,
     pub ui_port: u16,
 }
 
@@ -50,6 +64,7 @@ impl Default for Config {
             sounds_dir: default_data_dir().join("keebyd/sounds"),
             master_volume: 1.0,
             enabled: true,
+            auto_start: true,
             spatial_audio: true,
             per_key_feel: true,
             home_row_softness: 1.0,
@@ -67,6 +82,19 @@ impl Default for Config {
             hover_preview: true,
             enter_sound: String::new(),
             enter_volume: 1.0,
+            visualizer_enabled: true,
+            visualizer_timeout: 0.6,
+            visualizer_scale: 1.0,
+            visualizer_follow_cursor: true,
+            visualizer_position: "BottomRight".into(),
+            visualizer_cursor_gap: 16.0,
+            visualizer_glow: "FFFFFF".into(),
+            visualizer_frame: "1A1A1C".into(),
+            visualizer_keycap: "2C2C2E".into(),
+            notch_overlay_enabled: true,
+            notch_overlay_auto_hide: false,
+            show_lizard_switch: false,
+            show_faah_enter_sound: false,
             ui_port: 7777,
         }
     }
@@ -108,6 +136,7 @@ impl Config {
             "sounds_dir" => self.sounds_dir = value.into(),
             "master_volume" => self.master_volume = parse_range(key, value, 0.0..=4.0)?,
             "enabled" => self.enabled = boolean()?,
+            "auto_start" => self.auto_start = boolean()?,
             "spatial_audio" => self.spatial_audio = boolean()?,
             "per_key_feel" => self.per_key_feel = boolean()?,
             "home_row_softness" => self.home_row_softness = parse_range(key, value, 0.0..=2.0)?,
@@ -132,6 +161,23 @@ impl Config {
             "hover_preview" => self.hover_preview = boolean()?,
             "enter_sound" => self.enter_sound = value.into(),
             "enter_volume" => self.enter_volume = parse_range(key, value, 0.0..=2.0)?,
+            "visualizer_enabled" => self.visualizer_enabled = boolean()?,
+            "visualizer_timeout" => {
+                self.visualizer_timeout = parse_range(key, value, 0.2..=3.0)?;
+            }
+            "visualizer_scale" => self.visualizer_scale = parse_range(key, value, 0.5..=2.0)?,
+            "visualizer_follow_cursor" => self.visualizer_follow_cursor = boolean()?,
+            "visualizer_position" => self.visualizer_position = value.into(),
+            "visualizer_cursor_gap" => {
+                self.visualizer_cursor_gap = parse_range(key, value, 0.0..=80.0)?;
+            }
+            "visualizer_glow" => self.visualizer_glow = value.into(),
+            "visualizer_frame" => self.visualizer_frame = value.into(),
+            "visualizer_keycap" => self.visualizer_keycap = value.into(),
+            "notch_overlay_enabled" => self.notch_overlay_enabled = boolean()?,
+            "notch_overlay_auto_hide" => self.notch_overlay_auto_hide = boolean()?,
+            "show_lizard_switch" => self.show_lizard_switch = boolean()?,
+            "show_faah_enter_sound" => self.show_faah_enter_sound = boolean()?,
             "ui_port" => self.ui_port = parse_value(key, value)?,
             _ => {}
         }
@@ -144,6 +190,7 @@ impl Config {
             ("sounds_dir", self.sounds_dir.display().to_string()),
             ("master_volume", format!("{:.2}", self.master_volume)),
             ("enabled", self.enabled.to_string()),
+            ("auto_start", self.auto_start.to_string()),
             ("spatial_audio", self.spatial_audio.to_string()),
             ("per_key_feel", self.per_key_feel.to_string()),
             (
@@ -167,6 +214,37 @@ impl Config {
             ("hover_preview", self.hover_preview.to_string()),
             ("enter_sound", self.enter_sound.clone()),
             ("enter_volume", format!("{:.2}", self.enter_volume)),
+            ("visualizer_enabled", self.visualizer_enabled.to_string()),
+            (
+                "visualizer_timeout",
+                format!("{:.2}", self.visualizer_timeout),
+            ),
+            ("visualizer_scale", format!("{:.2}", self.visualizer_scale)),
+            (
+                "visualizer_follow_cursor",
+                self.visualizer_follow_cursor.to_string(),
+            ),
+            ("visualizer_position", self.visualizer_position.clone()),
+            (
+                "visualizer_cursor_gap",
+                format!("{:.0}", self.visualizer_cursor_gap),
+            ),
+            ("visualizer_glow", self.visualizer_glow.clone()),
+            ("visualizer_frame", self.visualizer_frame.clone()),
+            ("visualizer_keycap", self.visualizer_keycap.clone()),
+            (
+                "notch_overlay_enabled",
+                self.notch_overlay_enabled.to_string(),
+            ),
+            (
+                "notch_overlay_auto_hide",
+                self.notch_overlay_auto_hide.to_string(),
+            ),
+            ("show_lizard_switch", self.show_lizard_switch.to_string()),
+            (
+                "show_faah_enter_sound",
+                self.show_faah_enter_sound.to_string(),
+            ),
             ("ui_port", self.ui_port.to_string()),
         ]
     }

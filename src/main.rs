@@ -140,6 +140,9 @@ async fn run_daemon(engine: Arc<AudioEngine>, config_path: PathBuf, headless: bo
                     }
                     let position = keymap::lookup(code);
                     engine.play(position.group, phase, position.pan, position.feel);
+                    if position.group == KeyGroup::Enter && phase == Phase::Down {
+                        engine.play_enter_overlay();
+                    }
                     web_state.publish(KeyEvent { code, phase: u8::from(matches!(phase, Phase::Up)) });
                 }
                 None => break,

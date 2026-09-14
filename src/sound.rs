@@ -31,6 +31,7 @@ pub struct Profile {
     pub directory: PathBuf,
     pub normalization_gain: f32,
     samples: HashMap<(KeyGroup, Phase), Vec<Sample>>,
+    overlays: HashMap<String, Sample>,
 }
 
 impl Profile {
@@ -58,9 +59,8 @@ impl Profile {
                     .filter_map(Result::ok)
                     .map(|entry| entry.path())
                     .filter(|path| {
-                        path.extension()
-                            .is_some_and(|ext| ext.eq_ignore_ascii_case("wav"))
-                            && path
+                        overlay_name(path).is_some()
+                            || path
                                 .file_stem()
                                 .and_then(|stem| stem.to_str())
                                 .is_some_and(|stem| stem.starts_with("mouse_"))
@@ -70,14 +70,16 @@ impl Profile {
         files.sort_unstable();
 
         let mut samples: HashMap<_, Vec<_>> = HashMap::new();
+        let mut overlays = HashMap::new();
         for path in files {
-            let Some((group, phase)) = parse_sample_name(&path) else {
-                continue;
-            };
-            samples
-                .entry((group, phase))
-                .or_default()
-                .push(decode(&path)?);
+            if let Some((group, phase)) = parse_sample_name(&path) {
+                samples
+                    .entry((group, phase))
+                    .or_default()
+                    .push(decode(&path)?);
+            } else if let Some(name) = overlay_name(&path) {
+                overlays.insert(name.to_owned(), decode(&path)?);
+            }
         }
         if samples.is_empty() {
             bail!("profile {name} contains no recognized samples");
@@ -87,11 +89,26 @@ impl Profile {
             directory: directory.to_owned(),
             normalization_gain,
             samples,
+            overlays,
         })
     }
 
     pub fn variations(&self, group: KeyGroup, phase: Phase) -> Option<&[Sample]> {
         self.samples.get(&(group, phase)).map(Vec::as_slice)
+    }
+
+    #[must_use]
+    pub fn overlay(&self, name: &str) -> Option<&Sample> {
+        self.overlays.get(name)
+    }
+}
+
+fn overlay_name(path: &Path) -> Option<&str> {
+    match path.file_name()?.to_str()? {
+        "typewriter-enter.mp3" => Some("stamp-press"),
+        "faahh-enter.mp3" => Some("faahh"),
+        "toaster-ding.mp3" => Some("toaster-ding"),
+        _ => None,
     }
 }
 

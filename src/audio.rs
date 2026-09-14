@@ -161,6 +161,30 @@ impl AudioEngine {
         );
     }
 
+    pub fn preview_mouse(&self) {
+        self.play_mouse(Phase::Down);
+    }
+
+    pub fn play_enter_overlay(&self) {
+        let config = self.settings.read();
+        if !config.enabled || self.muted() || config.enter_sound.is_empty() {
+            return;
+        }
+        let Some(profile) = self.profile() else {
+            return;
+        };
+        let Some(sample) = profile.overlay(&config.enter_sound) else {
+            return;
+        };
+        self.mixer.lock().submit(
+            Arc::clone(sample),
+            0.0,
+            config.master_volume * config.enter_volume,
+            config.enter_tone_lpf,
+            config.enter_tone_pitch,
+        );
+    }
+
     pub fn mix_into(&self, output: &mut [f32]) {
         self.mixer.lock().mix(output);
     }

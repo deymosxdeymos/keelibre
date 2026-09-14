@@ -11,7 +11,7 @@ use keebyd::{
     SAMPLE_RATE,
     audio::{AudioEngine, AudioOutput},
     config::{Config, default_config_path},
-    input::{Hotkey, InputMonitor, MonitorEvent},
+    input::InputMonitor,
     keymap::{self, KeyGroup},
     sound::{Phase, Profile},
     web::{KeyEvent, WebState},
@@ -40,8 +40,7 @@ struct Cli {
     window: Option<String>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -54,6 +53,15 @@ async fn main() -> Result<()> {
     if let Some(url) = cli.window.as_deref() {
         return keebyd::desktop::run(url);
     }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("could not start async runtime")?
+        .block_on(run(cli))
+}
+
+#[allow(clippy::future_not_send)]
+async fn run(cli: Cli) -> Result<()> {
     let config_path = cli.config.unwrap_or_else(default_config_path);
     let mut config = match Config::load(&config_path) {
         Ok(config) => config,
@@ -105,12 +113,7 @@ async fn main() -> Result<()> {
 
 async fn run_daemon(engine: Arc<AudioEngine>, config_path: PathBuf, headless: bool) -> Result<()> {
     let config = engine.settings();
-    let hotkey = Hotkey {
-        key: config.hotkey_key,
-        taps: config.hotkey_taps,
-        ctrl: config.hotkey_ctrl,
-    };
-    let (_monitor, mut input) = InputMonitor::start(hotkey)?;
+    let (_monitor, mut input) = InputMonitor::start()?;
     let web_state = WebState::new(Arc::clone(&engine), config_path.clone());
     let server_state = web_state.clone();
     let server =
@@ -123,13 +126,18 @@ async fn run_daemon(engine: Arc<AudioEngine>, config_path: PathBuf, headless: bo
     };
     let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
     let mut user = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined1())?;
-    tracing::info!("running; Ctrl+K three times or SIGUSR1 toggles mute");
+    tracing::info!("running");
 
     loop {
         tokio::select! {
             event = input.recv() => match event {
-                Some(MonitorEvent::ToggleMute) => { tracing::info!(muted = engine.toggle_muted(), "hotkey"); }
-                Some(MonitorEvent::Key { code, phase }) => {
+                Some(event) => {
+                    let code = event.code;
+                    let phase = event.phase;
+                    if matches!(code, 272..=276) {
+                        engine.play_mouse(phase);
+                        continue;
+                    }
                     let position = keymap::lookup(code);
                     engine.play(position.group, phase, position.pan, position.feel);
                     web_state.publish(KeyEvent { code, phase: u8::from(matches!(phase, Phase::Up)) });

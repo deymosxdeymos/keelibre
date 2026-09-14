@@ -1,0 +1,13 @@
+[Unit]
+Description=Keebyd tray and control panel
+After=graphical-session.target keebyd.service
+Requires=keebyd.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/keebyd --window http://127.0.0.1:7777
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

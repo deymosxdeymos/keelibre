@@ -132,6 +132,35 @@ impl AudioEngine {
         );
     }
 
+    pub fn play_mouse(&self, phase: Phase) {
+        let config = self.settings.read();
+        if !config.enabled || self.muted() || config.mouse_sound.is_empty() {
+            return;
+        }
+        let variation = match config.mouse_sound.as_str() {
+            "default" => 0,
+            "soft" => 1,
+            "crisp" => 2,
+            _ => return,
+        };
+        let Some(profile) = self.profile() else {
+            return;
+        };
+        let Some(sample) = profile
+            .variations(KeyGroup::Mouse, phase)
+            .and_then(|set| set.get(variation))
+        else {
+            return;
+        };
+        self.mixer.lock().submit(
+            Arc::clone(sample),
+            0.0,
+            config.master_volume * config.mouse_volume,
+            config.mouse_tone_lpf,
+            config.mouse_tone_pitch,
+        );
+    }
+
     pub fn mix_into(&self, output: &mut [f32]) {
         self.mixer.lock().mix(output);
     }

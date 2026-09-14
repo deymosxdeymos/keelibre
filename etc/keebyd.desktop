@@ -2,7 +2,7 @@
 Type=Application
 Name=Keebyd
 Comment=Control mechanical keyboard sounds
-Exec=keebyd --window http://127.0.0.1:7777
+Exec=systemctl --user restart keebyd-ui.service
 Terminal=false
 Categories=AudioVideo;Audio;Settings;
 StartupNotify=true

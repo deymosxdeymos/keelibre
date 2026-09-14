@@ -50,6 +50,23 @@ impl Profile {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("wav"))
             })
             .collect::<Vec<_>>();
+        if let Some(root) = directory.parent() {
+            files.extend(
+                fs::read_dir(root.join("_shared"))
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .filter(|path| {
+                        path.extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("wav"))
+                            && path
+                                .file_stem()
+                                .and_then(|stem| stem.to_str())
+                                .is_some_and(|stem| stem.starts_with("mouse_"))
+                    }),
+            );
+        }
         files.sort_unstable();
 
         let mut samples: HashMap<_, Vec<_>> = HashMap::new();
@@ -181,6 +198,10 @@ mod tests {
         assert_eq!(
             parse_sample_name(Path::new("alpha_down_03.wav")),
             Some((KeyGroup::Alpha, Phase::Down))
+        );
+        assert_eq!(
+            parse_sample_name(Path::new("mouse_up_02.wav")),
+            Some((KeyGroup::Mouse, Phase::Up))
         );
         assert_eq!(parse_sample_name(Path::new("README.md")), None);
     }

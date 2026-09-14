@@ -64,8 +64,15 @@ keebyd --render output.wav     Render the deterministic fidelity test
 keebyd --config PATH           Use another configuration file
 ```
 
-Press Ctrl+K three times or send `SIGUSR1` to toggle mute. Send `SIGHUP` to reload the configuration
-and active profile.
+Closing the panel hides it in the notification tray. Select **Open Keebyd** from the tray menu or
+launch Keebyd again from the application menu to bring it back. Use **Toggle mute** in the tray or
+send `SIGUSR1` to the engine service. Send `SIGHUP` to reload the configuration and active profile.
+
+You can also open the panel from a terminal:
+
+```sh
+systemctl --user restart keebyd-ui.service
+```
 
 ## Architecture
 

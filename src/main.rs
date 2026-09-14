@@ -92,11 +92,8 @@ async fn run(cli: Cli) -> Result<()> {
     }
 
     let engine = Arc::new(AudioEngine::new(config.clone()));
-    let _output = AudioOutput::open(&engine).unwrap_or_else(|error| {
-        tracing::warn!(%error, "audio setup failed; running silently");
-        None
-    });
     engine.set_profile(profile);
+    let _output = wait_for_audio(&engine).await;
     if cli.preview {
         for _ in 0..3 {
             engine.play(KeyGroup::Alpha, Phase::Down, 0.0, 1.0);
@@ -109,6 +106,17 @@ async fn run(cli: Cli) -> Result<()> {
     }
 
     run_daemon(engine, config_path, cli.headless).await
+}
+
+async fn wait_for_audio(engine: &AudioEngine) -> AudioOutput {
+    loop {
+        match AudioOutput::open(engine) {
+            Ok(Some(output)) => return output,
+            Ok(None) => tracing::warn!("audio output unavailable; retrying"),
+            Err(error) => tracing::warn!(%error, "audio setup failed; retrying"),
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 }
 
 async fn run_daemon(engine: Arc<AudioEngine>, config_path: PathBuf, headless: bool) -> Result<()> {

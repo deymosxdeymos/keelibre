@@ -106,18 +106,16 @@ fn monitor_devices(stop: &AtomicBool, sender: &mpsc::Sender<MonitorEvent>) {
                     let EventSummary::Key(_, key, value) = event.destructure() else {
                         continue;
                     };
+                    let code = key.code();
+                    if !is_sound_input(code) {
+                        continue;
+                    }
                     let phase = match value {
                         1 => Phase::Down,
                         0 => Phase::Up,
                         _ => continue,
                     };
-                    if sender
-                        .blocking_send(MonitorEvent {
-                            code: key.code(),
-                            phase,
-                        })
-                        .is_err()
-                    {
+                    if sender.blocking_send(MonitorEvent { code, phase }).is_err() {
                         return;
                     }
                 }
@@ -127,6 +125,10 @@ fn monitor_devices(stop: &AtomicBool, sender: &mpsc::Sender<MonitorEvent>) {
             }
         }
     }
+}
+
+const fn is_sound_input(code: u16) -> bool {
+    code < 0x100 || matches!(code, 272..=276)
 }
 
 fn scan_devices() -> Vec<Device> {
@@ -177,4 +179,18 @@ fn is_keyboard_or_mouse(device: &Device) -> bool {
     let keyboard = alpha_count >= 10 && keys.contains(KeyCode::KEY_SPACE);
     let mouse = keys.contains(KeyCode::BTN_LEFT) && !keys.contains(KeyCode::KEY_A);
     keyboard || mouse
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignores_touch_contacts_but_keeps_mouse_clicks() {
+        assert!(is_sound_input(KeyCode::KEY_A.code()));
+        assert!(is_sound_input(KeyCode::BTN_LEFT.code()));
+        assert!(is_sound_input(KeyCode::BTN_EXTRA.code()));
+        assert!(!is_sound_input(KeyCode::BTN_TOUCH.code()));
+        assert!(!is_sound_input(KeyCode::BTN_TOOL_FINGER.code()));
+    }
 }

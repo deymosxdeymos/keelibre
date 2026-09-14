@@ -145,28 +145,30 @@ def reference_render(profile_dir, master=1.0, norm=None):
     cache = {}
     rr = {}
 
+    def load_group(group, phase):
+        key = (group, phase)
+        if key in cache:
+            return cache[key]
+        pname = "down" if phase == 0 else "up"
+        directory = os.path.join(profile_dir, f"{group}_{pname}")
+        if os.path.isdir(directory):
+            files = sorted(
+                os.path.join(directory, f) for f in os.listdir(directory)
+                if f.startswith(f"{group}_{pname}_") and f.endswith(".wav"))
+        else:
+            files = sorted(
+                os.path.join(profile_dir, f) for f in os.listdir(profile_dir)
+                if f.startswith(f"{group}_{pname}_") and f.endswith(".wav"))
+        cache[key] = [load_sample(f) for f in files]
+        return cache[key]
+
     def sample_for(group, phase, slot):
         # main.c renders down strokes for all 9 groups, then up strokes
-        pname = "down" if phase == 0 else "up"
         key = (group, phase)
-        if key not in cache:
-            files = []
-            d = os.path.join(profile_dir, f"{group}_{pname}")
-            if os.path.isdir(d):
-                files = sorted(
-                    os.path.join(d, f) for f in os.listdir(d)
-                    if f.startswith(f"{group}_{pname}_") and f.endswith(".wav"))
-            elif os.path.isfile(os.path.join(profile_dir, f"{group}_{pname}_01.wav")):
-                files = [os.path.join(profile_dir, f"{group}_{pname}_01.wav")]
-            # keeby pack layout: <dir>/<group>_<phase>_NN.wav
-            if not files:
-                files = sorted(
-                    os.path.join(profile_dir, f) for f in os.listdir(profile_dir)
-                    if f.startswith(f"{group}_{pname}_") and f.endswith(".wav"))
-            cache[key] = [load_sample(f) for f in files]
-        lst = cache[key]
+        lst = load_group(group, phase)
         if not lst:
-            lst = cache.get(("alpha", phase), [])
+            key = ("alpha", phase)
+            lst = load_group(*key)
         if not lst:
             return None
         i = rr.get(key, 0)

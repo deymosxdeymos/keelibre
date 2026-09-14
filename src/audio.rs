@@ -227,9 +227,7 @@ fn open_stream(mixer: Arc<Mutex<Mixer>>, muted: &Arc<AtomicBool>) -> Result<Opti
             move |output: &mut [f32], _| {
                 output.fill(0.0);
                 if !muted_in_callback.load(Ordering::Relaxed) {
-                    if let Some(mut mixer) = mixer.try_lock() {
-                        mixer.mix(output);
-                    }
+                    mixer.lock().mix(output);
                 }
             },
             |error| tracing::error!(%error, "audio stream failed"),
@@ -269,11 +267,6 @@ impl Mixer {
             voice.mix(output);
         }
         self.voices.retain(|voice| !voice.finished());
-        for sample in output {
-            if sample.abs() > 0.9 {
-                *sample = sample.tanh();
-            }
-        }
     }
 }
 

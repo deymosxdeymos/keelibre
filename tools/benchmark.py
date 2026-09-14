@@ -7,7 +7,7 @@ Three test layers:
   1. ASSET INTEGRITY  — every imported sample must be bit-identical to the
      original app's file (sha256).
   2. ENGINE RENDER    — keebyd --render writes a deterministic stroke pattern
-     using the real engine code path (claim, varispeed, LPF, pan, limiter).
+      using the real engine code path (gain, varispeed, LPF, and pan).
      The reference implementation (below, transcribed from the decompiled
      AudioEngine/CachedSound/PitchShift/ToneLpf/SoftLimiter + NAudio pan law)
      renders the same pattern from the same files. Compare per-stroke:
@@ -189,8 +189,10 @@ def reference_render(profile_dir, master=1.0, norm=None):
             at = lead + i * gap + (phase * int(0.235 * SR))
             submit(smp, pan, vol, at)
 
-    x = soft_limiter(out)
-    return x
+    # Normal switch playback goes directly into Keeby's mixer. The soft limiter
+    # is only used by its UI notification sounds. The WAV writer clips the
+    # rendered float stream to the signed 16-bit output range.
+    return np.clip(out, -1.0, 1.0)
 
 
 def band_energies(x, sr=SR):

@@ -60,7 +60,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            profile: "thocky-linear".into(),
+            profile: "gateron-ink-black".into(),
             sounds_dir: default_data_dir().join("keebyd/sounds"),
             master_volume: 1.0,
             enabled: true,
@@ -134,7 +134,9 @@ impl Config {
         match key {
             "profile" => self.profile = value.into(),
             "sounds_dir" => self.sounds_dir = value.into(),
-            "master_volume" => self.master_volume = parse_range(key, value, 0.0..=4.0)?,
+            "master_volume" => {
+                self.master_volume = parse_range(key, value, 0.0..=4.0)?.min(1.0);
+            }
             "enabled" => self.enabled = boolean()?,
             "auto_start" => self.auto_start = boolean()?,
             "spatial_audio" => self.spatial_audio = boolean()?,
@@ -146,7 +148,9 @@ impl Config {
             "tone_pitch" => self.tone_pitch = parse_range(key, value, 0.1..=4.0)?,
             "mouse_tone_lpf" => self.mouse_tone_lpf = parse_range(key, value, 0.0..=1.0)?,
             "mouse_tone_pitch" => self.mouse_tone_pitch = parse_range(key, value, 0.1..=4.0)?,
-            "mouse_volume" => self.mouse_volume = parse_range(key, value, 0.0..=2.0)?,
+            "mouse_volume" => {
+                self.mouse_volume = parse_range(key, value, 0.0..=2.0)?.min(1.0);
+            }
             "enter_tone_lpf" => self.enter_tone_lpf = parse_range(key, value, 0.0..=1.0)?,
             "enter_tone_pitch" => self.enter_tone_pitch = parse_range(key, value, 0.1..=4.0)?,
             "mouse_sound" => self.mouse_sound = value.into(),
@@ -160,7 +164,9 @@ impl Config {
             "favorites" => self.favorites = value.into(),
             "hover_preview" => self.hover_preview = boolean()?,
             "enter_sound" => self.enter_sound = value.into(),
-            "enter_volume" => self.enter_volume = parse_range(key, value, 0.0..=2.0)?,
+            "enter_volume" => {
+                self.enter_volume = parse_range(key, value, 0.0..=2.0)?.min(1.0);
+            }
             "visualizer_enabled" => self.visualizer_enabled = boolean()?,
             "visualizer_timeout" => {
                 self.visualizer_timeout = parse_range(key, value, 0.2..=3.0)?;
@@ -295,5 +301,22 @@ fn invalid_value(key: &str, value: &str) -> ConfigError {
     ConfigError::InvalidValue {
         key: key.into(),
         value: value.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamps_legacy_volume_ranges_to_windows_limits() {
+        let mut config = Config::default();
+        config.set("master_volume", "3.05").unwrap();
+        config.set("mouse_volume", "1.75").unwrap();
+        config.set("enter_volume", "2.00").unwrap();
+
+        assert!((config.master_volume - 1.0).abs() < f32::EPSILON);
+        assert!((config.mouse_volume - 1.0).abs() < f32::EPSILON);
+        assert!((config.enter_volume - 1.0).abs() < f32::EPSILON);
     }
 }

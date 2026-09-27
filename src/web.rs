@@ -9,17 +9,24 @@ use anyhow::Result;
 use axum::{
     Json, Router,
     extract::{Query, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
+    middleware::{Next, from_fn},
     response::{Html, IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
-use tower_http::cors::CorsLayer;
 
-use crate::{audio::AudioEngine, catalog, config::Config, sound::Profile};
+use crate::{
+    audio::AudioEngine,
+    catalog,
+    config::Config,
+    keymap::KeyGroup,
+    sound::{self, Phase, Profile},
+};
 
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct KeyEvent {
@@ -32,6 +39,7 @@ pub struct WebState {
     engine: Arc<AudioEngine>,
     config_path: Arc<PathBuf>,
     events: broadcast::Sender<KeyEvent>,
+    updates: Arc<Mutex<()>>,
 }
 
 impl WebState {
@@ -42,15 +50,61 @@ impl WebState {
             engine,
             config_path: Arc::new(config_path),
             events,
+            updates: Arc::new(Mutex::new(())),
         }
     }
 
     pub fn publish(&self, event: KeyEvent) {
         let _ = self.events.send(event);
     }
+
+    async fn change(
+        &self,
+        reload_profile: bool,
+        change: impl FnOnce(&mut Config) -> Result<(), ApiError> + Send + 'static,
+    ) -> Result<Config, ApiError> {
+        let state = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let _guard = state.updates.lock();
+            let old = state.engine.settings();
+            let mut config = old.clone();
+            change(&mut config)?;
+            let profile = if reload_profile
+                || config.profile != old.profile
+                || config.sounds_dir != old.sounds_dir
+            {
+                Some(Profile::load(&config.sounds_dir.join(&config.profile))?)
+            } else {
+                None
+            };
+            config.save(&state.config_path)?;
+            if config.auto_start != old.auto_start {
+                set_auto_start(config.auto_start);
+            }
+            state.engine.apply(config.clone(), profile);
+            Ok(config)
+        })
+        .await?
+    }
+
+    pub async fn reload(&self) -> Result<()> {
+        let state = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let _guard = state.updates.lock();
+            let config = Config::load(&state.config_path)?;
+            if config.ui_port != state.engine.settings().ui_port {
+                anyhow::bail!("ui_port requires a service restart");
+            }
+            let profile = Profile::load(&config.sounds_dir.join(&config.profile))?;
+            state.engine.apply(config, Some(profile));
+            Ok(())
+        })
+        .await?
+    }
 }
 
-pub async fn serve(port: u16, state: WebState) -> Result<()> {
+pub async fn serve(listener: tokio::net::TcpListener, state: WebState) -> Result<()> {
+    let port = listener.local_addr()?.port();
     let router = Router::new()
         .route("/", get(index))
         .route("/api/status", get(status))
@@ -61,15 +115,34 @@ pub async fn serve(port: u16, state: WebState) -> Result<()> {
         .route("/api/preview-overlay", post(preview_overlay))
         .route("/api/favorites", post(favorite))
         .route("/api/toggle-mute", post(toggle_mute))
-        .route("/api/sample", get(sample))
         .route("/api/events", get(events))
-        .layer(CorsLayer::permissive())
+        .layer(from_fn(
+            move |request: axum::extract::Request, next: Next| async move {
+                if !local_request(request.headers(), port) {
+                    return StatusCode::FORBIDDEN.into_response();
+                }
+                next.run(request).await
+            },
+        ))
         .with_state(state);
-    let address = format!("127.0.0.1:{port}");
-    let listener = tokio::net::TcpListener::bind(&address).await?;
-    tracing::info!(url = %format!("http://{address}"), "control panel ready");
+    tracing::info!(url = %format!("http://{}", listener.local_addr()?), "control panel ready");
     axum::serve(listener, router).await?;
     Ok(())
+}
+
+fn local_request(headers: &HeaderMap, port: u16) -> bool {
+    let Some(host) = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+    (host == format!("127.0.0.1:{port}") || host == format!("localhost:{port}"))
+        && headers.get(header::ORIGIN).is_none_or(|origin| {
+            origin
+                .to_str()
+                .is_ok_and(|origin| origin == format!("http://{host}"))
+        })
 }
 
 async fn index() -> Html<&'static str> {
@@ -91,22 +164,28 @@ async fn update_settings(
     State(state): State<WebState>,
     Json(values): Json<Value>,
 ) -> Result<Json<Config>, ApiError> {
-    let mut settings = state.engine.settings();
     let object = values
         .as_object()
-        .ok_or_else(|| ApiError::bad_request("expected a JSON object"))?;
-    for (key, value) in object {
-        let value = value
-            .as_str()
-            .map_or_else(|| value.to_string(), ToOwned::to_owned);
-        settings.set(key, &value)?;
-    }
-    settings.save(&state.config_path)?;
-    if object.contains_key("auto_start") {
-        set_auto_start(settings.auto_start);
-    }
-    state.engine.apply_settings(settings.clone());
-    Ok(Json(settings))
+        .ok_or_else(|| ApiError::bad_request("expected a JSON object"))?
+        .clone();
+    Ok(Json(
+        state
+            .change(false, move |config| {
+                for (key, value) in object {
+                    if matches!(key.as_str(), "profile" | "sounds_dir" | "ui_port") {
+                        return Err(ApiError::bad_request(
+                            "use the profile selector or config file",
+                        ));
+                    }
+                    let value = value
+                        .as_str()
+                        .map_or_else(|| value.to_string(), ToOwned::to_owned);
+                    config.set(&key, &value)?;
+                }
+                Ok(())
+            })
+            .await?,
+    ))
 }
 
 fn set_auto_start(enabled: bool) {
@@ -194,12 +273,12 @@ async fn select_profile(
     Query(query): Query<NameQuery>,
 ) -> Result<Json<Value>, ApiError> {
     validate_component(&query.name)?;
-    let mut settings = state.engine.settings();
-    let profile = Profile::load(&settings.sounds_dir.join(&query.name))?;
-    settings.profile = query.name;
-    settings.save(&state.config_path)?;
-    state.engine.set_profile(profile);
-    state.engine.apply_settings(settings);
+    state
+        .change(true, move |settings| {
+            settings.profile = query.name;
+            Ok(())
+        })
+        .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -208,8 +287,23 @@ async fn preview(
     Query(query): Query<NameQuery>,
 ) -> Result<Json<Value>, ApiError> {
     validate_component(&query.name)?;
-    let profile = Profile::load(&state.engine.settings().sounds_dir.join(query.name))?;
-    state.engine.preview(&profile);
+    let engine = Arc::clone(&state.engine);
+    tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
+        let config = engine.settings();
+        if query.name == config.profile {
+            if let Some(sample) = engine.profile().and_then(|profile| {
+                profile
+                    .variations(KeyGroup::Alpha, Phase::Down)
+                    .and_then(|set| set.first().cloned())
+            }) {
+                engine.preview(sample);
+            }
+        } else {
+            engine.preview(sound::preview_sample(&config.sounds_dir.join(query.name))?);
+        }
+        Ok(())
+    })
+    .await??;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -224,51 +318,29 @@ async fn favorite(
     Query(query): Query<FavoriteQuery>,
 ) -> Result<Json<Value>, ApiError> {
     validate_component(&query.name)?;
-    let mut settings = state.engine.settings();
-    let mut favorites = settings
-        .favorites
-        .split(',')
-        .filter(|item| !item.is_empty())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    favorites.retain(|item| item != &query.name);
-    if query.on != 0 {
-        favorites.push(query.name);
-    }
-    favorites.sort();
-    favorites.dedup();
-    settings.favorites = favorites.join(",");
-    settings.save(&state.config_path)?;
-    state.engine.apply_settings(settings);
+    state
+        .change(false, move |settings| {
+            let mut favorites = settings
+                .favorites
+                .split(',')
+                .filter(|item| !item.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            favorites.retain(|item| item != &query.name);
+            if query.on != 0 {
+                favorites.push(query.name);
+            }
+            favorites.sort();
+            favorites.dedup();
+            settings.favorites = favorites.join(",");
+            Ok(())
+        })
+        .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
 async fn toggle_mute(State(state): State<WebState>) -> Json<Value> {
     Json(json!({ "muted": state.engine.toggle_muted() }))
-}
-
-#[derive(Deserialize)]
-struct SampleQuery {
-    name: String,
-    file: String,
-}
-
-async fn sample(
-    State(state): State<WebState>,
-    Query(query): Query<SampleQuery>,
-) -> Result<impl IntoResponse, ApiError> {
-    validate_component(&query.name)?;
-    validate_component(&query.file)?;
-    let path = state
-        .engine
-        .settings()
-        .sounds_dir
-        .join(query.name)
-        .join(query.file);
-    let bytes = tokio::fs::read(path)
-        .await
-        .map_err(|error| ApiError(StatusCode::NOT_FOUND, error.into()))?;
-    Ok(([(header::CONTENT_TYPE, "audio/wav")], bytes))
 }
 
 async fn events(

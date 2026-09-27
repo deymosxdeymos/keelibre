@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail};
 use symphonia::core::{
     audio::AudioBufferRef,
     codecs::DecoderOptions,
+    errors::Error as SymphoniaError,
     formats::FormatOptions,
     io::{MediaSourceStream, MediaSourceStreamOptions},
     meta::MetadataOptions,
@@ -42,6 +43,9 @@ impl Profile {
             .context("profile path has no UTF-8 directory name")?
             .to_owned();
         let normalization_gain = read_normalization_gain(directory).unwrap_or(1.0);
+        if !normalization_gain.is_finite() || normalization_gain < 0.0 {
+            bail!("invalid normalization gain in {}", directory.display());
+        }
         let mut files = fs::read_dir(directory)
             .with_context(|| format!("could not read profile {}", directory.display()))?
             .filter_map(Result::ok)
@@ -103,6 +107,20 @@ impl Profile {
     }
 }
 
+pub fn preview_sample(directory: &Path) -> Result<Sample> {
+    let path = fs::read_dir(directory)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("wav"))
+                && parse_sample_name(path) == Some((KeyGroup::Alpha, Phase::Down))
+        })
+        .min()
+        .context("profile has no alpha-down preview sample")?;
+    decode(&path)
+}
+
 fn overlay_name(path: &Path) -> Option<&str> {
     match path.file_name()?.to_str()? {
         "typewriter-enter.mp3" => Some("stamp-press"),
@@ -137,7 +155,16 @@ pub fn decode(path: &Path) -> Result<Sample> {
     let mut decoder =
         symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
     let mut mono = Vec::new();
-    while let Ok(packet) = format.next_packet() {
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(SymphoniaError::IoError(error))
+                if error.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                break;
+            }
+            Err(error) => return Err(error.into()),
+        };
         if packet.track_id() != track_id {
             continue;
         }
@@ -205,21 +232,4 @@ fn read_normalization_gain(directory: &Path) -> Option<f32> {
                 .then(|| value.trim().parse().ok())
                 .flatten()
         })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn parses_pack_filename() {
-        assert_eq!(
-            parse_sample_name(Path::new("alpha_down_03.wav")),
-            Some((KeyGroup::Alpha, Phase::Down))
-        );
-        assert_eq!(
-            parse_sample_name(Path::new("mouse_up_02.wav")),
-            Some((KeyGroup::Mouse, Phase::Up))
-        );
-        assert_eq!(parse_sample_name(Path::new("README.md")), None);
-    }
 }

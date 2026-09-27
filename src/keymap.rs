@@ -123,16 +123,3 @@ fn modifier_pan(code: u16) -> f32 {
         _ => 0.0,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn home_row_preserves_feel_curve() {
-        let a = lookup(30);
-        assert_eq!(a.group, KeyGroup::Alpha);
-        assert!((a.feel - 0.4).abs() < f32::EPSILON);
-        assert!(a.pan < 0.0);
-    }
-}

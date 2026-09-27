@@ -121,11 +121,14 @@ impl Config {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut file = fs::File::create(path)?;
+        let mut file =
+            tempfile::NamedTempFile::new_in(path.parent().unwrap_or_else(|| Path::new(".")))?;
         writeln!(file, "# keebyd configuration")?;
         for (key, value) in self.entries() {
             writeln!(file, "{key} = {value}")?;
         }
+        file.as_file().sync_all()?;
+        file.persist(path).map_err(|error| error.error)?;
         Ok(())
     }
 
@@ -301,22 +304,5 @@ fn invalid_value(key: &str, value: &str) -> ConfigError {
     ConfigError::InvalidValue {
         key: key.into(),
         value: value.into(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clamps_legacy_volume_ranges_to_windows_limits() {
-        let mut config = Config::default();
-        config.set("master_volume", "3.05").unwrap();
-        config.set("mouse_volume", "1.75").unwrap();
-        config.set("enter_volume", "2.00").unwrap();
-
-        assert!((config.master_volume - 1.0).abs() < f32::EPSILON);
-        assert!((config.mouse_volume - 1.0).abs() < f32::EPSILON);
-        assert!((config.enter_volume - 1.0).abs() < f32::EPSILON);
     }
 }

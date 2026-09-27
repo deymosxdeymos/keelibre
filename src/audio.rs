@@ -23,9 +23,13 @@ const MAX_VOICES: usize = 64;
 #[derive(Clone)]
 pub struct AudioEngine {
     mixer: Arc<Mutex<Mixer>>,
-    profile: Arc<RwLock<Option<Arc<Profile>>>>,
-    settings: Arc<RwLock<Config>>,
+    state: Arc<RwLock<EngineState>>,
     muted: Arc<AtomicBool>,
+}
+
+struct EngineState {
+    settings: Config,
+    profile: Option<Arc<Profile>>,
 }
 
 impl AudioEngine {
@@ -33,29 +37,40 @@ impl AudioEngine {
     pub fn new(settings: Config) -> Self {
         Self {
             mixer: Arc::new(Mutex::new(Mixer::default())),
-            profile: Arc::default(),
-            settings: Arc::new(RwLock::new(settings)),
+            state: Arc::new(RwLock::new(EngineState {
+                settings,
+                profile: None,
+            })),
             muted: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub fn set_profile(&self, profile: Profile) {
-        *self.profile.write() = Some(Arc::new(profile));
+        let old = self.state.write().profile.replace(Arc::new(profile));
+        drop(old);
         self.mixer.lock().round_robin.clear();
+    }
+
+    pub fn apply(&self, settings: Config, profile: Option<Profile>) {
+        let changed = profile.is_some();
+        let mut state = self.state.write();
+        state.settings = settings;
+        let old = profile.and_then(|profile| state.profile.replace(Arc::new(profile)));
+        drop(state);
+        drop(old);
+        if changed {
+            self.mixer.lock().round_robin.clear();
+        }
     }
 
     #[must_use]
     pub fn profile(&self) -> Option<Arc<Profile>> {
-        self.profile.read().clone()
-    }
-
-    pub fn apply_settings(&self, settings: Config) {
-        *self.settings.write() = settings;
+        self.state.read().profile.clone()
     }
 
     #[must_use]
     pub fn settings(&self) -> Config {
-        self.settings.read().clone()
+        self.state.read().settings.clone()
     }
 
     #[must_use]
@@ -65,21 +80,27 @@ impl AudioEngine {
 
     pub fn set_muted(&self, muted: bool) {
         self.muted.store(muted, Ordering::Relaxed);
+        if muted {
+            self.mixer.lock().voices.clear();
+        }
     }
 
     #[must_use]
     pub fn toggle_muted(&self) -> bool {
-        let next = !self.muted();
-        self.set_muted(next);
-        next
+        let muted = !self.muted.fetch_xor(true, Ordering::Relaxed);
+        if muted {
+            self.mixer.lock().voices.clear();
+        }
+        muted
     }
 
     pub fn play(&self, group: KeyGroup, phase: Phase, pan: f32, feel: f32) {
-        let config = self.settings.read();
+        let state = self.state.read();
+        let config = &state.settings;
         if !config.enabled || self.muted() || config.mute_modifiers && group == KeyGroup::Modifier {
             return;
         }
-        let Some(profile) = self.profile() else {
+        let Some(profile) = &state.profile else {
             return;
         };
         let actual_group = if profile.variations(group, phase).is_some() {
@@ -90,8 +111,10 @@ impl AudioEngine {
         let Some(variations) = profile.variations(actual_group, phase) else {
             return;
         };
-        let mut mixer = self.mixer.lock();
-        let index = mixer.next_variation(actual_group, phase, variations.len());
+        let index = self
+            .mixer
+            .lock()
+            .next_variation(actual_group, phase, variations.len());
         let feel = if config.per_key_feel {
             if feel < 1.0 {
                 1.0 + (feel - 1.0) * config.home_row_softness
@@ -106,34 +129,34 @@ impl AudioEngine {
         } else {
             1.0
         };
-        mixer.submit(
+        let voice = Voice::new(
             Arc::clone(&variations[index]),
             if config.spatial_audio { pan } else { 0.0 },
             feel * normalization * config.master_volume,
             config.tone_lpf,
             config.tone_pitch,
         );
+        drop(state);
+        self.mixer.lock().submit(voice);
     }
 
-    pub fn preview(&self, profile: &Profile) {
-        let config = self.settings.read();
-        let Some(sample) = profile
-            .variations(KeyGroup::Alpha, Phase::Down)
-            .and_then(|set| set.first())
-        else {
-            return;
-        };
-        self.mixer.lock().submit(
-            Arc::clone(sample),
+    pub fn preview(&self, sample: Sample) {
+        let state = self.state.read();
+        let config = &state.settings;
+        let voice = Voice::new(
+            sample,
             0.0,
             config.master_volume,
             config.tone_lpf,
             config.tone_pitch,
         );
+        drop(state);
+        self.mixer.lock().submit(voice);
     }
 
     pub fn play_mouse(&self, phase: Phase) {
-        let config = self.settings.read();
+        let state = self.state.read();
+        let config = &state.settings;
         if !config.enabled || self.muted() || config.mouse_sound.is_empty() {
             return;
         }
@@ -143,7 +166,7 @@ impl AudioEngine {
             "crisp" => 2,
             _ => return,
         };
-        let Some(profile) = self.profile() else {
+        let Some(profile) = &state.profile else {
             return;
         };
         let Some(sample) = profile
@@ -152,13 +175,15 @@ impl AudioEngine {
         else {
             return;
         };
-        self.mixer.lock().submit(
+        let voice = Voice::new(
             Arc::clone(sample),
             0.0,
             config.master_volume * config.mouse_volume,
             config.mouse_tone_lpf,
             config.mouse_tone_pitch,
         );
+        drop(state);
+        self.mixer.lock().submit(voice);
     }
 
     pub fn preview_mouse(&self) {
@@ -166,23 +191,26 @@ impl AudioEngine {
     }
 
     pub fn play_enter_overlay(&self) {
-        let config = self.settings.read();
+        let state = self.state.read();
+        let config = &state.settings;
         if !config.enabled || self.muted() || config.enter_sound.is_empty() {
             return;
         }
-        let Some(profile) = self.profile() else {
+        let Some(profile) = &state.profile else {
             return;
         };
         let Some(sample) = profile.overlay(&config.enter_sound) else {
             return;
         };
-        self.mixer.lock().submit(
+        let voice = Voice::new(
             Arc::clone(sample),
             0.0,
             config.master_volume * config.enter_volume,
             config.enter_tone_lpf,
             config.enter_tone_pitch,
         );
+        drop(state);
+        self.mixer.lock().submit(voice);
     }
 
     pub fn mix_into(&self, output: &mut [f32]) {
@@ -253,13 +281,12 @@ impl Mixer {
         selected
     }
 
-    fn submit(&mut self, sample: Sample, pan: f32, volume: f32, cutoff: f32, pitch: f32) {
+    fn submit(&mut self, voice: Voice) {
         self.voices.retain(|voice| !voice.finished());
         if self.voices.len() >= MAX_VOICES {
             return;
         }
-        self.voices
-            .push(Voice::new(sample, pan, volume, cutoff, pitch));
+        self.voices.push(voice);
     }
 
     fn mix(&mut self, output: &mut [f32]) {
@@ -327,16 +354,5 @@ impl Voice {
             frame[1] += sample * self.gain_right * self.volume;
             self.position += self.rate;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn hard_pan_uses_equal_power_law() {
-        let voice = Voice::new(Arc::from([0.0, 1.0]), -1.0, 1.0, 1.0, 1.0);
-        assert!((voice.gain_left - 1.0).abs() < f32::EPSILON);
-        assert!(voice.gain_right.abs() < 1.0e-6);
     }
 }

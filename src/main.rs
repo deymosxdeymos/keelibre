@@ -93,8 +93,8 @@ async fn run(cli: Cli) -> Result<()> {
 
     let engine = Arc::new(AudioEngine::new(config.clone()));
     engine.set_profile(profile);
-    let _output = wait_for_audio(&engine).await;
     if cli.preview {
+        let _output = wait_for_audio(&engine).await;
         for _ in 0..3 {
             engine.play(KeyGroup::Alpha, Phase::Down, 0.0, 1.0);
             tokio::time::sleep(Duration::from_millis(85)).await;
@@ -119,25 +119,29 @@ async fn wait_for_audio(engine: &AudioEngine) -> AudioOutput {
     }
 }
 
+// CPAL's stream is !Send; this future stays on the thread running `block_on`.
+#[allow(clippy::future_not_send)]
 async fn run_daemon(engine: Arc<AudioEngine>, config_path: PathBuf, headless: bool) -> Result<()> {
     let config = engine.settings();
     let (_monitor, mut input) = InputMonitor::start()?;
-    let web_state = WebState::new(Arc::clone(&engine), config_path.clone());
+    let web_state = WebState::new(Arc::clone(&engine), config_path);
     let server_state = web_state.clone();
-    let server =
-        tokio::spawn(async move { keebyd::web::serve(config.ui_port, server_state).await });
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", config.ui_port)).await?;
+    let mut server = tokio::spawn(async move { keebyd::web::serve(listener, server_state).await });
     let mut desktop = if headless || !graphical_session_available() {
         None
     } else {
-        tokio::time::sleep(Duration::from_millis(120)).await;
         Some(DesktopProcess::spawn(config.ui_port)?)
     };
     let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
     let mut user = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined1())?;
+    let mut audio = Box::pin(wait_for_audio(&engine));
+    let mut output = None;
     tracing::info!("running");
 
     loop {
         tokio::select! {
+            ready = &mut audio, if output.is_none() => { output = Some(ready); }
             event = input.recv() => match event {
                 Some(event) => {
                     let code = event.code;
@@ -156,16 +160,18 @@ async fn run_daemon(engine: Arc<AudioEngine>, config_path: PathBuf, headless: bo
                 None => break,
             },
             _ = user.recv() => { tracing::info!(muted = engine.toggle_muted(), "SIGUSR1"); }
-            _ = hangup.recv() => match Config::load(&config_path) {
-                Ok(config) => {
-                    match Profile::load(&config.sounds_dir.join(&config.profile)) {
-                        Ok(profile) => engine.set_profile(profile),
-                        Err(error) => tracing::error!(%error, "could not reload profile"),
+            _ = hangup.recv() => {
+                let state = web_state.clone();
+                tokio::spawn(async move {
+                    match state.reload().await {
+                        Ok(()) => tracing::info!("configuration reloaded"),
+                        Err(error) => tracing::error!(%error, "could not reload configuration"),
                     }
-                    engine.apply_settings(config);
-                    tracing::info!("configuration reloaded");
-                }
-                Err(error) => tracing::error!(%error, "could not reload configuration"),
+                });
+            },
+            result = &mut server => {
+                result??;
+                anyhow::bail!("control panel stopped unexpectedly");
             },
             result = tokio::signal::ctrl_c() => { result?; break; }
         }

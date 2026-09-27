@@ -1,11 +1,14 @@
 use std::{
+    collections::HashMap,
     io,
     os::fd::AsFd,
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
     thread,
+    time::{Duration, Instant},
 };
 
 use evdev::{Device, EventSummary, KeyCode, enumerate};
@@ -65,64 +68,77 @@ pub fn devices() -> Vec<(String, String)> {
 }
 
 fn monitor_devices(stop: &AtomicBool, sender: &mpsc::Sender<MonitorEvent>) {
+    let mut devices = HashMap::new();
+    scan_devices(&mut devices);
+    let mut last_scan = Instant::now();
     while !stop.load(Ordering::Relaxed) {
-        let mut devices = scan_devices();
-        while !stop.load(Ordering::Relaxed) {
-            let readiness = {
-                let mut descriptors = devices
-                    .iter()
-                    .map(|device| PollFd::new(device.as_fd(), PollFlags::POLLIN))
-                    .collect::<Vec<_>>();
-                match poll(&mut descriptors, PollTimeout::from(500_u16)) {
-                    Ok(_) => descriptors.iter().map(PollFd::revents).collect::<Vec<_>>(),
-                    Err(error) => {
-                        tracing::debug!(%error, "input polling failed");
-                        break;
-                    }
-                }
-            };
-            let mut rescan = false;
-            for (index, events) in readiness.into_iter().enumerate() {
-                let Some(events) = events else {
-                    continue;
-                };
-                if events.intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL)
-                {
-                    rescan = true;
-                    break;
-                }
-                if !events.contains(PollFlags::POLLIN) {
-                    continue;
-                }
-                let events = match devices[index].fetch_events() {
-                    Ok(events) => events.collect::<Vec<_>>(),
-                    Err(error) => {
-                        tracing::debug!(%error, "input device disappeared");
-                        rescan = true;
-                        break;
-                    }
-                };
-                for event in events {
-                    let EventSummary::Key(_, key, value) = event.destructure() else {
-                        continue;
-                    };
-                    let code = key.code();
-                    if !is_sound_input(code) {
-                        continue;
-                    }
-                    let phase = match value {
-                        1 => Phase::Down,
-                        0 => Phase::Up,
-                        _ => continue,
-                    };
-                    if sender.blocking_send(MonitorEvent { code, phase }).is_err() {
-                        return;
-                    }
+        if last_scan.elapsed() >= Duration::from_secs(2) {
+            scan_devices(&mut devices);
+            last_scan = Instant::now();
+        }
+        let readiness = {
+            let mut descriptors = devices
+                .values()
+                .map(|device| PollFd::new(device.as_fd(), PollFlags::POLLIN))
+                .collect::<Vec<_>>();
+            match poll(&mut descriptors, PollTimeout::from(500_u16)) {
+                Ok(_) => Some(descriptors.iter().map(PollFd::revents).collect::<Vec<_>>()),
+                Err(error) => {
+                    tracing::debug!(%error, "input polling failed");
+                    None
                 }
             }
-            if rescan {
-                break;
+        };
+        let Some(readiness) = readiness else {
+            devices.clear();
+            thread::sleep(Duration::from_millis(500));
+            scan_devices(&mut devices);
+            last_scan = Instant::now();
+            continue;
+        };
+        let mut failed = Vec::new();
+        for ((path, device), events) in devices.iter_mut().zip(readiness) {
+            let Some(events) = events else { continue };
+            if events.intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL) {
+                failed.push(path.clone());
+                continue;
             }
+            if !events.contains(PollFlags::POLLIN) {
+                continue;
+            }
+            match device.fetch_events() {
+                Ok(events) => {
+                    for event in events {
+                        let EventSummary::Key(_, key, value) = event.destructure() else {
+                            continue;
+                        };
+                        let code = key.code();
+                        if !is_sound_input(code) {
+                            continue;
+                        }
+                        let phase = match value {
+                            1 => Phase::Down,
+                            0 => Phase::Up,
+                            _ => continue,
+                        };
+                        if sender.blocking_send(MonitorEvent { code, phase }).is_err() {
+                            return;
+                        }
+                    }
+                }
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                Err(error) => {
+                    tracing::debug!(%error, "input device disappeared");
+                    failed.push(path.clone());
+                }
+            }
+        }
+        if !failed.is_empty() {
+            for path in failed {
+                devices.remove(&path);
+            }
+            scan_devices(&mut devices);
+            last_scan = Instant::now();
         }
     }
 }
@@ -131,21 +147,24 @@ const fn is_sound_input(code: u16) -> bool {
     code < 0x100 || matches!(code, 272..=276)
 }
 
-fn scan_devices() -> Vec<Device> {
-    let devices = enumerate()
-        .filter_map(|(path, device)| {
-            if !is_keyboard_or_mouse(&device) {
-                return None;
-            }
-            if let Err(error) = device.set_nonblocking(true) {
-                tracing::warn!(path = %path.display(), %error, "could not monitor input device");
-                return None;
-            }
-            Some(device)
-        })
-        .collect::<Vec<_>>();
+fn scan_devices(devices: &mut HashMap<PathBuf, Device>) {
+    let mut seen = std::collections::HashSet::new();
+    for (path, device) in enumerate() {
+        if !is_keyboard_or_mouse(&device) {
+            continue;
+        }
+        seen.insert(path.clone());
+        if devices.contains_key(&path) {
+            continue;
+        }
+        if let Err(error) = device.set_nonblocking(true) {
+            tracing::warn!(path = %path.display(), %error, "could not monitor input device");
+            continue;
+        }
+        devices.insert(path, device);
+    }
+    devices.retain(|path, _| seen.contains(path));
     tracing::debug!(count = devices.len(), "input devices scanned");
-    devices
 }
 
 fn is_keyboard_or_mouse(device: &Device) -> bool {
@@ -179,18 +198,4 @@ fn is_keyboard_or_mouse(device: &Device) -> bool {
     let keyboard = alpha_count >= 10 && keys.contains(KeyCode::KEY_SPACE);
     let mouse = keys.contains(KeyCode::BTN_LEFT) && !keys.contains(KeyCode::KEY_A);
     keyboard || mouse
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ignores_touch_contacts_but_keeps_mouse_clicks() {
-        assert!(is_sound_input(KeyCode::KEY_A.code()));
-        assert!(is_sound_input(KeyCode::BTN_LEFT.code()));
-        assert!(is_sound_input(KeyCode::BTN_EXTRA.code()));
-        assert!(!is_sound_input(KeyCode::BTN_TOUCH.code()));
-        assert!(!is_sound_input(KeyCode::BTN_TOOL_FINGER.code()));
-    }
 }

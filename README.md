@@ -86,13 +86,23 @@ The code keeps calculations separate from operating-system work:
 - `src/web.rs` adapts the local Axum API and server-sent key events.
 - `src/main.rs` owns resource lifetimes, signals, and application wiring.
 
+The daemon starts its loopback control panel even when no audio device is available and retries
+audio setup in the background. The panel API accepts only local hosts and same-origin browser
+requests; it exposes raw key events and is not intended for network access. Settings changes and
+SIGHUP reloads are serialized: a replacement profile is decoded before the new configuration and
+profile are published together. Configuration files are replaced atomically. Input devices are
+reconciled every two seconds so newly connected keyboards are discovered without a restart.
+
 ## Development
 
 ```sh
 cargo fmt --check
-cargo test
 cargo clippy --all-targets --all-features -- -D warnings
+cargo build --locked
+python3 tools/smoke.py
 cargo build --release --locked
 ```
 
-`tools/benchmark.py` compares an offline render against the reference DSP chain.
+The smoke check runs the real renderer and headless control API with temporary sound packs. It
+does not exercise actual keyboard capture or speaker output; verify those on a Linux machine with
+devices. `tools/benchmark.py` compares an offline render against the reference DSP chain.

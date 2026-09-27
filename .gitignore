@@ -3,3 +3,4 @@ bin/
 packs/
 re/
 *.wav
+.amp/portals/*

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+packages=(libasound2-dev libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config)
+missing=()
+for package in "${packages[@]}"; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -qx 'install ok installed'; then
+        missing+=("$package")
+    fi
+done
+if ((${#missing[@]})); then
+    echo "Installing native build dependencies: ${missing[*]}"
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}"
+fi
+
+if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
+    echo 'Installing Rust toolchain'
+    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+fi
+source "$HOME/.cargo/env"
+if ! rustup toolchain list | grep -q '^stable-'; then
+    echo 'Installing stable Rust'
+    rustup toolchain install stable --profile minimal
+fi
+for component in rustfmt clippy; do
+    if ! rustup component list --installed | grep -q "^${component}-"; then
+        echo "Installing $component"
+        rustup component add "$component"
+    fi
+done
+
+if ! python3 -c 'import numpy' 2>/dev/null; then
+    echo 'Installing NumPy for sound generation and benchmarks'
+    python3 -m pip install --user numpy
+fi
+
+echo 'Fetching locked Cargo dependencies'
+cargo fetch --locked
+echo 'Orb setup ready'

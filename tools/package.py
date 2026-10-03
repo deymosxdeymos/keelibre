@@ -3,7 +3,6 @@
 
 import argparse
 import hashlib
-import os
 from pathlib import Path
 import shutil
 import stat
@@ -38,7 +37,7 @@ def write_plist(path: Path, version: str) -> None:
 """, encoding="utf-8")
 
 
-def zip_tree(source: Path, archive: Path) -> None:
+def zip_tree(source: Path, archive: Path, executable: Path) -> None:
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as output:
         for path in sorted(source.rglob("*")):
             if not path.is_file():
@@ -46,7 +45,9 @@ def zip_tree(source: Path, archive: Path) -> None:
             name = path.relative_to(source.parent).as_posix()
             info = zipfile.ZipInfo(name)
             info.date_time = (1980, 1, 1, 0, 0, 0)
-            mode = path.stat().st_mode & 0o777
+            # Encode target permissions, independent of the packaging host's filesystem.
+            info.create_system = 3  # Unix permission semantics, including on Windows hosts.
+            mode = 0o755 if path == executable else 0o644
             info.external_attr = (stat.S_IFREG | mode) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             output.writestr(info, path.read_bytes(), compresslevel=9)
@@ -71,21 +72,25 @@ def package(root: Path, target: str, binary: Path, output_dir: Path, version: st
         if target.startswith("macos-"):
             contents = staging / "Keebyd.app" / "Contents"
             (contents / "MacOS").mkdir(parents=True)
-            shutil.copy2(binary, contents / "MacOS" / "keebyd")
-            os.chmod(contents / "MacOS" / "keebyd", 0o755)
+            staged_binary = contents / "MacOS" / "keebyd"
             shutil.copytree(packs, contents / "Resources" / "packs")
             write_plist(contents / "Info.plist", version)
         else:
-            shutil.copy2(binary, staging / executable)
-            if target == "linux-x86_64":
-                os.chmod(staging / executable, 0o755)
+            staged_binary = staging / executable
             shutil.copytree(packs, staging / "packs")
+        shutil.copy2(binary, staged_binary)
 
         if extension == "zip":
-            zip_tree(staging, archive)
+            zip_tree(staging, archive, staged_binary)
         else:
+            executable_name = staged_binary.relative_to(staging.parent).as_posix()
+
+            def target_permissions(info: tarfile.TarInfo) -> tarfile.TarInfo:
+                info.mode = 0o755 if info.isdir() or info.name == executable_name else 0o644
+                return info
+
             with tarfile.open(archive, "w:gz", format=tarfile.PAX_FORMAT) as output:
-                output.add(staging, arcname=name)
+                output.add(staging, arcname=name, filter=target_permissions)
 
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     archive.with_name(archive.name + ".sha256").write_text(

@@ -29,6 +29,7 @@ class PackageTests(unittest.TestCase):
                     prefix = f"keebyd-0.1.0-{target}/"
                     if archive.name.endswith(".zip"):
                         with zipfile.ZipFile(archive) as contents:
+                            self.assertTrue(all(item.create_system == 3 for item in contents.infolist()))
                             files = {item.filename: contents.read(item) for item in contents.infolist()}
                             modes = {item.filename: item.external_attr >> 16 for item in contents.infolist()}
                     else:
@@ -46,8 +47,8 @@ class PackageTests(unittest.TestCase):
                         executable = prefix + ("keebyd.exe" if target.startswith("windows-") else "keebyd")
                         packs = prefix + "packs/"
                     self.assertEqual(files[executable], binary.read_bytes())
-                    if not target.startswith("windows-"):
-                        self.assertTrue(modes[executable] & stat.S_IXUSR)
+                    self.assertEqual(stat.S_IMODE(modes[executable]), 0o755)
+                    self.assertEqual(stat.S_IMODE(modes[prefix + "README.md"]), 0o644)
                     for sample in (ROOT / "packs").rglob("*.wav"):
                         self.assertEqual(files[packs + sample.relative_to(ROOT / "packs").as_posix()], sample.read_bytes())
                     checksum = archive.with_name(archive.name + ".sha256").read_text().split()

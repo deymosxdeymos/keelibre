@@ -1,6 +1,6 @@
 target/
 bin/
-packs/
 re/
 *.wav
+!/packs/**/*.wav
 .amp/portals/*

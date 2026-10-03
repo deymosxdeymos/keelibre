@@ -43,7 +43,14 @@ An optional `profile.conf` sets pack loudness:
 normalization_gain = 1.0
 ```
 
-Generate the included synthetic packs with:
+Eight ready-to-use synthetic packs are included in `packs/`. Install them with:
+
+```sh
+mkdir -p ~/.local/share/keebyd/sounds
+cp -R packs/. ~/.local/share/keebyd/sounds/
+```
+
+To generate synthetic packs instead, install NumPy and run:
 
 ```sh
 python3 tools/synth_profiles.py ~/.local/share/keebyd/sounds

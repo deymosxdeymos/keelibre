@@ -1,20 +1,19 @@
 [package]
 name = "keebyd"
-description = "Mechanical keyboard sounds for Linux"
+description = "Cross-platform mechanical keyboard sounds"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.90"
 
 [dependencies]
 anyhow = "1.0"
 axum = "0.8"
 clap = { version = "4.5", features = ["derive"] }
 cpal = "0.15"
-evdev = "0.13"
+dirs = "6.0"
 hound = "3.5"
 futures-core = "0.3"
-nix = { version = "0.31", features = ["poll"] }
 parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -27,7 +26,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wry = "0.53"
 tao = "0.34"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13"
+nix = { version = "0.31", features = ["poll"] }
 ksni = { version = "0.3.6", features = ["blocking"] }
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+rdev = "0.5.3"
+tray-icon = "0.26"
 
 [profile.release]
 codegen-units = 1

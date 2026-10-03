@@ -187,9 +187,12 @@ fn append_mono(buffer: AudioBufferRef<'_>, output: &mut Vec<f32>) {
         symphonia::core::audio::SampleBuffer::<f32>::new(buffer.capacity() as u64, spec);
     converted.copy_interleaved_ref(buffer);
     let channels = spec.channels.count();
-    for frame in converted.samples().chunks_exact(channels) {
-        output.push(frame.iter().sum::<f32>() / channels as f32);
-    }
+    output.extend(
+        converted
+            .samples()
+            .chunks_exact(channels)
+            .map(|frame| frame.iter().sum::<f32>() / channels as f32),
+    );
 }
 
 fn resample(input: &[f32], source_rate: u32) -> Vec<f32> {

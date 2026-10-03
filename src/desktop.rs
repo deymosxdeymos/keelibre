@@ -2,7 +2,10 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use anyhow::{Context, Result};
+#[cfg(target_os = "linux")]
 use ksni::blocking::TrayMethods;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use tao::event::StartCause;
 use tao::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -18,10 +21,12 @@ enum DesktopEvent {
     Quit,
 }
 
+#[cfg(target_os = "linux")]
 struct KeebydTray {
     proxy: EventLoopProxy<DesktopEvent>,
 }
 
+#[cfg(target_os = "linux")]
 impl ksni::Tray for KeebydTray {
     fn id(&self) -> String {
         "keebyd".into()
@@ -108,20 +113,42 @@ pub fn run(url: &str) -> Result<()> {
         .build(&window)
         .context("could not create desktop webview")?;
 
+    #[cfg(target_os = "linux")]
     let tray = KeebydTray {
         proxy: event_loop.create_proxy(),
     }
     .spawn()
     .context("could not create system tray icon")?;
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    let mut tray = None;
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    let proxy = event_loop.create_proxy();
     let endpoint = url.to_owned();
     event_loop.run(move |event, _, control_flow| {
+        #[cfg(target_os = "linux")]
         let _keep_tray_alive = &tray;
         *control_flow = ControlFlow::Wait;
         match event {
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            Event::NewEvents(StartCause::Init) => match native_tray(proxy.clone()) {
+                Ok(native_tray) => tray = Some(native_tray),
+                Err(error) => {
+                    tracing::error!(%error, "could not create system tray icon");
+                }
+            },
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => window.set_visible(false),
+            } => {
+                #[cfg(target_os = "linux")]
+                window.set_visible(false);
+                #[cfg(any(target_os = "windows", target_os = "macos"))]
+                if tray.is_some() {
+                    window.set_visible(false);
+                } else {
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
             Event::UserEvent(DesktopEvent::Open) => {
                 window.set_visible(true);
                 window.set_focus();
@@ -137,7 +164,60 @@ pub fn run(url: &str) -> Result<()> {
     });
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn native_tray(proxy: EventLoopProxy<DesktopEvent>) -> Result<tray_icon::TrayIcon> {
+    use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+
+    let menu = Menu::new();
+    let open = MenuItem::new("Open Keebyd", true, None);
+    let mute = MenuItem::new("Toggle mute", true, None);
+    let quit = MenuItem::new("Quit panel", true, None);
+    menu.append_items(&[&open, &mute, &PredefinedMenuItem::separator(), &quit])?;
+
+    let open_id = open.id().clone();
+    let mute_id = mute.id().clone();
+    let quit_id = quit.id().clone();
+    MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+        let desktop_event = if event.id == open_id {
+            Some(DesktopEvent::Open)
+        } else if event.id == mute_id {
+            Some(DesktopEvent::ToggleMute)
+        } else if event.id == quit_id {
+            Some(DesktopEvent::Quit)
+        } else {
+            None
+        };
+        if let Some(event) = desktop_event {
+            let _ = proxy.send_event(event);
+        }
+    }));
+
+    let rgba = tray_icon_bytes()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|pixel| [pixel[1], pixel[2], pixel[3], pixel[0]])
+        .collect();
+    let icon = tray_icon::Icon::from_rgba(rgba, 32, 32)?;
+    tray_icon::TrayIconBuilder::new()
+        .with_tooltip("Keebyd")
+        .with_menu(Box::new(menu))
+        .with_icon(icon)
+        .build()
+        .context("could not build native tray icon")
+}
+
+#[cfg(target_os = "linux")]
 fn tray_icon() -> ksni::Icon {
+    const SIZE: i32 = 32;
+    ksni::Icon {
+        width: SIZE,
+        height: SIZE,
+        data: tray_icon_bytes(),
+    }
+}
+
+fn tray_icon_bytes() -> Vec<u8> {
     const SIZE: i32 = 32;
     let mut data = vec![0_u8; (SIZE * SIZE * 4) as usize];
     for y in 0..SIZE {
@@ -157,11 +237,7 @@ fn tray_icon() -> ksni::Icon {
             data[offset..offset + 4].copy_from_slice(&color);
         }
     }
-    ksni::Icon {
-        width: SIZE,
-        height: SIZE,
-        data,
-    }
+    data
 }
 
 fn post(base_url: &str, path: &str) -> Result<()> {

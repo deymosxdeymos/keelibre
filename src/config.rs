@@ -1,7 +1,8 @@
 use std::{
-    env, fs,
+    fs,
     io::{self, Write},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
@@ -60,11 +61,11 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            profile: "gateron-ink-black".into(),
-            sounds_dir: default_data_dir().join("keebyd/sounds"),
+            profile: "thocky-linear".into(),
+            sounds_dir: default_sounds_dir(),
             master_volume: 1.0,
             enabled: true,
-            auto_start: true,
+            auto_start: cfg!(target_os = "linux"),
             spatial_audio: true,
             per_key_feel: true,
             home_row_softness: 1.0,
@@ -102,27 +103,16 @@ impl Default for Config {
 
 impl Config {
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
-        let text = fs::read_to_string(path).map_err(ConfigError::Read)?;
-        let mut config = Self::default();
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with(['#', ';']) {
-                continue;
-            }
-            let Some((key, value)) = line.split_once('=') else {
-                continue;
-            };
-            config.set(key.trim(), value.trim())?;
-        }
-        Ok(config)
+        fs::read_to_string(path).map_err(ConfigError::Read)?.parse()
     }
 
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let mut file =
-            tempfile::NamedTempFile::new_in(path.parent().unwrap_or_else(|| Path::new(".")))?;
+        let parent = path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent)?;
+        let mut file = tempfile::NamedTempFile::new_in(parent)?;
         writeln!(file, "# keebyd configuration")?;
         for (key, value) in self.entries() {
             writeln!(file, "{key} = {value}")?;
@@ -259,20 +249,46 @@ impl Config {
     }
 }
 
+impl FromStr for Config {
+    type Err = ConfigError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with(['#', ';']))
+            .filter_map(|line| line.split_once('='))
+            .try_fold(Self::default(), |mut config, (key, value)| {
+                config.set(key.trim(), value.trim())?;
+                Ok(config)
+            })
+    }
+}
+
 #[must_use]
 pub fn default_config_path() -> PathBuf {
-    env::var_os("XDG_CONFIG_HOME").map_or_else(
-        || home_dir().join(".config/keebyd/config.conf"),
-        |path| PathBuf::from(path).join("keebyd/config.conf"),
-    )
+    dirs::config_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("keebyd/config.conf")
 }
 
-fn default_data_dir() -> PathBuf {
-    env::var_os("XDG_DATA_HOME").map_or_else(|| home_dir().join(".local/share"), PathBuf::from)
+fn default_sounds_dir() -> PathBuf {
+    let user = dirs::data_local_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("keebyd/sounds");
+    let executable = std::env::current_exe().ok();
+    sounds_directory(user, executable.as_deref())
 }
 
-fn home_dir() -> PathBuf {
-    env::var_os("HOME").map_or_else(|| PathBuf::from("/tmp"), PathBuf::from)
+fn sounds_directory(user: PathBuf, executable: Option<&Path>) -> PathBuf {
+    if user.is_dir() {
+        return user;
+    }
+    executable
+        .and_then(Path::parent)
+        .into_iter()
+        .flat_map(|parent| [parent.join("packs"), parent.join("../Resources/packs")])
+        .find(|path| path.is_dir())
+        .unwrap_or(user)
 }
 
 fn parse_value<T: std::str::FromStr>(key: &str, value: &str) -> Result<T, ConfigError> {
@@ -304,5 +320,56 @@ fn invalid_value(key: &str, value: &str) -> ConfigError {
     ConfigError::InvalidValue {
         key: key.into(),
         value: value.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parsing_is_ordered_and_validates_finite_ranges() {
+        let config: Config = "# enabled = false\nmaster_volume = 0.25\nmaster_volume = 0.7\nenabled = OFF\nunknown = ignored".parse().unwrap();
+        assert!((config.master_volume - 0.7).abs() < f32::EPSILON);
+        assert!(!config.enabled);
+        for value in ["NaN", "inf", "-0.01", "1.01"] {
+            assert!(format!("tone_lpf = {value}").parse::<Config>().is_err());
+        }
+        for value in ["0", "1"] {
+            assert!(format!("tone_lpf = {value}").parse::<Config>().is_ok());
+        }
+    }
+
+    #[test]
+    fn packs_are_found_in_portable_and_app_bundles_without_overriding_user_data() {
+        let root = tempfile::tempdir().unwrap();
+        let user = root.path().join("user/sounds");
+        let executable = root.path().join("Keebyd.app/Contents/MacOS/keebyd");
+        let resources = root.path().join("Keebyd.app/Contents/Resources/packs");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::create_dir_all(&resources).unwrap();
+        assert_eq!(
+            sounds_directory(user.clone(), Some(&executable))
+                .canonicalize()
+                .unwrap(),
+            resources.canonicalize().unwrap()
+        );
+        let portable = executable.parent().unwrap().join("packs");
+        fs::create_dir_all(&portable).unwrap();
+        assert_eq!(sounds_directory(user.clone(), Some(&executable)), portable);
+        fs::create_dir_all(&user).unwrap();
+        assert_eq!(sounds_directory(user.clone(), Some(&executable)), user);
+    }
+
+    #[test]
+    fn saving_replaces_existing_config() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/config.conf");
+        let config: Config = "master_volume = 0.35\nenabled = false".parse().unwrap();
+        Config::default().save(&path).unwrap();
+        config.save(&path).unwrap();
+        let loaded = Config::load(&path).unwrap();
+        assert!(!loaded.enabled);
+        assert!((loaded.master_volume - 0.35).abs() < f32::EPSILON);
     }
 }

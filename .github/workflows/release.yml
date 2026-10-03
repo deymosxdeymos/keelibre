@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-x86_64
+            binary: target/release/keebyd
+          - os: windows-latest
+            target: windows-x86_64
+            binary: target/release/keebyd.exe
+          - os: macos-15
+            target: macos-aarch64
+            binary: target/release/keebyd
+          - os: macos-15-intel
+            target: macos-x86_64
+            binary: target/release/keebyd
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+      - shell: bash
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
+          test "${GITHUB_REF_NAME}" = "v$version"
+      - run: cargo +stable fmt --check
+      - run: cargo +stable test --locked --all-targets --all-features
+      - run: cargo +stable clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo +stable build --release --locked
+      - run: python3 -m unittest discover -s tests
+      - if: runner.os == 'Linux'
+        run: KEEBYD_BIN=target/release/keebyd python3 tests/smoke.py
+      - shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 tools/package.py --target '${{ matrix.target }}' --binary '${{ matrix.binary }}' --version "$version"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo deymosxdeymos/keelibre --verify-tag --generate-notes

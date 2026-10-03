@@ -2,6 +2,7 @@
 """Exercise the built daemon and offline renderer with disposable sound packs."""
 
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import signal
@@ -16,7 +17,7 @@ import wave
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = ROOT / "target/debug/keebyd"
+BIN = Path(os.environ.get("KEEBYD_BIN", ROOT / "target/debug/keebyd")).resolve()
 
 
 def request(port, path, *, data=None, headers=None):

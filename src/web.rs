@@ -1,7 +1,6 @@
 use std::{
     convert::Infallible,
     path::{Path, PathBuf},
-    process::Command,
     sync::Arc,
 };
 
@@ -146,13 +145,14 @@ fn local_request(headers: &HeaderMap, port: u16) -> bool {
 }
 
 async fn index() -> Html<&'static str> {
-    Html(include_str!("../tools/ui.html"))
+    Html(include_str!("../assets/panel.html"))
 }
 
 async fn status(State(state): State<WebState>) -> Json<Value> {
     let settings = state.engine.settings();
     Json(
-        json!({ "profile": settings.profile, "muted": state.engine.muted(), "enabled": settings.enabled }),
+        json!({ "profile": settings.profile, "muted": state.engine.muted(), "enabled": settings.enabled,
+            "auto_start_supported": cfg!(target_os = "linux") }),
     )
 }
 
@@ -172,6 +172,11 @@ async fn update_settings(
         state
             .change(false, move |config| {
                 for (key, value) in object {
+                    if key == "auto_start" && !cfg!(target_os = "linux") {
+                        return Err(ApiError::bad_request(
+                            "configure startup in OS Login Items or Startup Apps",
+                        ));
+                    }
                     if matches!(key.as_str(), "profile" | "sounds_dir" | "ui_port") {
                         return Err(ApiError::bad_request(
                             "use the profile selector or config file",
@@ -188,9 +193,10 @@ async fn update_settings(
     ))
 }
 
+#[cfg(target_os = "linux")]
 fn set_auto_start(enabled: bool) {
     let action = if enabled { "enable" } else { "disable" };
-    match Command::new("systemctl")
+    match std::process::Command::new("systemctl")
         .args(["--user", action, "keebyd.service", "keebyd-ui.service"])
         .status()
     {
@@ -199,6 +205,9 @@ fn set_auto_start(enabled: bool) {
         Err(error) => tracing::warn!(%error, "could not update launch-at-login setting"),
     }
 }
+
+#[cfg(not(target_os = "linux"))]
+const fn set_auto_start(_enabled: bool) {}
 
 #[derive(Serialize)]
 struct Profiles {
